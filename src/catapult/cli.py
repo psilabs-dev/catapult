@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import toml
 
-from .constants import CONFIG_DIR
+from .constants import CATAPULT_HOME
 from .controller import test_connection, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
@@ -48,8 +48,8 @@ def main():
         from getpass import getpass
         import stat
 
-        config_file = CONFIG_DIR / "catapult.toml"
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        config_file = CATAPULT_HOME / "catapult.toml"
+        CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
 
         if config_file.exists():
             with open(config_file, 'r') as reader:
@@ -90,7 +90,7 @@ def main():
         lrr_api_key: str
 
         # get default configuration if available
-        config_file = CONFIG_DIR / "catapult.toml"
+        config_file = CATAPULT_HOME / "catapult.toml"
         if config_file.exists():
             with open(config_file, 'r') as reader:
                 configuration = toml.load(reader)
@@ -147,7 +147,7 @@ def main():
         lrr_api_key: str
 
         # get default configuration if available
-        config_file = CONFIG_DIR / "catapult.toml"
+        config_file = CATAPULT_HOME / "catapult.toml"
         if config_file.exists():
             with open(config_file, 'r') as reader:
                 configuration = toml.load(reader)
