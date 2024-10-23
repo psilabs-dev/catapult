@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import toml
 
-from .constants import CATAPULT_HOME
+from .constants import CATAPULT_HOME, CATAPULT_CONFIG_FILE
 from .controller import test_connection, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
@@ -48,11 +48,10 @@ def main():
         from getpass import getpass
         import stat
 
-        config_file = CATAPULT_HOME / "catapult.toml"
         CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
 
-        if config_file.exists():
-            with open(config_file, 'r') as reader:
+        if CATAPULT_CONFIG_FILE.exists():
+            with open(CATAPULT_CONFIG_FILE, 'r') as reader:
                 curr_configuration = toml.load(reader)
                 curr_lrr_host = curr_configuration['default']['lrr_host']
                 curr_api_key = curr_configuration['default']['lrr_api_key']
@@ -74,9 +73,9 @@ def main():
                     ('lrr_api_key', lrr_api_key),
                 ]))
             ])
-            with open(config_file, 'w') as writer:
+            with open(CATAPULT_CONFIG_FILE, 'w') as writer:
                 toml.dump(configuration, writer)
-            config_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            CATAPULT_CONFIG_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
             return 0
         else:
             return 0
@@ -90,9 +89,9 @@ def main():
         lrr_api_key: str
 
         # get default configuration if available
-        config_file = CATAPULT_HOME / "catapult.toml"
-        if config_file.exists():
-            with open(config_file, 'r') as reader:
+        CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
+        if CATAPULT_CONFIG_FILE.exists():
+            with open(CATAPULT_CONFIG_FILE, 'r') as reader:
                 configuration = toml.load(reader)
                 lrr_host = configuration['default']['lrr_host']
                 lrr_api_key = configuration['default']['lrr_api_key']
@@ -147,9 +146,9 @@ def main():
         lrr_api_key: str
 
         # get default configuration if available
-        config_file = CATAPULT_HOME / "catapult.toml"
-        if config_file.exists():
-            with open(config_file, 'r') as reader:
+        CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
+        if CATAPULT_CONFIG_FILE.exists():
+            with open(CATAPULT_CONFIG_FILE, 'r') as reader:
                 configuration = toml.load(reader)
                 lrr_host = configuration['default']['lrr_host']
                 lrr_api_key = configuration['default']['lrr_api_key']
