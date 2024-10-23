@@ -17,6 +17,11 @@ Verify installation:
 ```sh
 catapult version
 ```
+Test connection to a server:
+```sh
+catapult check
+# success
+```
 
 ## Usage
 Configure `catapult` default settings, which are saved at `~/.config/catapult/catapult.toml`.
