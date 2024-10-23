@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools >= 74.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catapult"
+version = "0.0.1"
+authors = [
+    {name="psilabs-dev"}
+]
+description = "A LANraragi file upload client."
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.11, <3.13"
+dynamic = [
+    "dependencies"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "tox>=4.23.0"
+]
+
+[project.scripts]
+catapult = "catapult.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/psilabs-dev/catapult"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
