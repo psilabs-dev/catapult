@@ -226,6 +226,8 @@ def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: s
     if not is_connected:
         raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
 
+    fn_call_start = time.time()
+
     upload_counter = [0]
     if use_threading:
         lock = threading.Lock()
@@ -244,4 +246,6 @@ def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: s
     else:
         for upload_request in upload_requests:
             __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
-    print(f"Uploaded {upload_counter} new archives.")
+
+    fn_call_time = time.time() - fn_call_start
+    print(f"Uploaded {upload_counter} new archives; elapsed time: {fn_call_time}s.")
