@@ -174,11 +174,11 @@ def upload_archive_to_server(
 
 def __handle_upload_job(
         upload_request: ArchiveUploadRequest, lrr_host: str, lrr_api_key: str, upload_counter: List[int], 
-        lock: threading.Lock=None
+        lock: threading.Lock=None, checksum_max_retries: int=None
 ):
     archive_filename = upload_request.archive_file_name
     logger.debug(f"Uploading {archive_filename}...")
-    retry_count = 0
+    checksum_retry_count = 0
     while True:
         response = upload_archive_to_server(
             upload_request.archive_file_path,
@@ -195,28 +195,28 @@ def __handle_upload_job(
                     upload_counter[0] += 1
             else:
                 upload_counter[0] += 1
-            break
+            return
         elif status_code == 401:
             raise ConnectionError(f"Invalid credentials while authenticating to LANraragi server {lrr_host}.")
         elif status_code == 409: # duplicate archive
             logger.warning(f"Duplicate archive: {upload_request.archive_file_name}.")
-            break
+            return
         elif status_code == 415: # unsupported file
             logger.warning(f"Unsupported file: {upload_request.archive_file_name}.")
-            break
+            return
         elif status_code == 422: # checksum mismatch, try again.
-            logger.warning(f"Checksum mismatch while handling {upload_request.archive_file_name}; trying again...")
-            retry_count += 1
-            continue
+            if checksum_retry_count < checksum_max_retries:
+                logger.warning(f"Checksum mismatch while handling {upload_request.archive_file_name}; trying again...")
+                checksum_retry_count += 1
+                continue
+            else:
+                raise ConnectionError(f"Persistent checksum issues with {lrr_host} while uploading {archive_filename}.")
         elif status_code == 500: # server error
             raise requests.HTTPError(f"A server error has occurred! {response.text}")
         else:
             raise requests.HTTPError(f"status code {status_code}; error {response.text}")
 
-def orchestrate_uploads(
-        upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False,
-        outer_max_retry_count: int=3
-):
+def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False):
     """
     Orchestrate multiple upload jobs to LANraragi.
     """
