@@ -172,7 +172,10 @@ def upload_archive_to_server(
                 else:
                     raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
 
-def __handle_upload_job(upload_request: ArchiveUploadRequest, lrr_host: str, lrr_api_key: str):
+def __handle_upload_job(
+        upload_request: ArchiveUploadRequest, lrr_host: str, lrr_api_key: str, upload_counter: List[int], 
+        lock: threading.Lock=None
+):
     archive_filename = upload_request.archive_file_name
     logger.debug(f"Uploading {archive_filename}...")
     retry_count = 0
@@ -187,6 +190,11 @@ def __handle_upload_job(upload_request: ArchiveUploadRequest, lrr_host: str, lrr
         status_code = response.status_code
         if status_code == 200:
             logger.info(f"Successfully uploaded {archive_filename} to {lrr_host}.")
+            if lock:
+                with lock:
+                    upload_counter[0] += 1
+            else:
+                upload_counter[0] += 1
             break
         elif status_code == 401:
             raise ConnectionError(f"Invalid credentials while authenticating to LANraragi server {lrr_host}.")
@@ -218,10 +226,16 @@ def orchestrate_uploads(
     if not is_connected:
         raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
 
+    upload_counter = [0]
     if use_threading:
+        lock = threading.Lock()
         threads:List[threading.Thread] = list()
         for upload_request in upload_requests:
-            thread = threading.Thread(target=__handle_upload_job, args=(upload_request, lrr_host, lrr_api_key))
+            thread = threading.Thread(
+                target=__handle_upload_job, 
+                args=(upload_request, lrr_host, lrr_api_key, upload_counter),
+                kwargs={'lock': lock}
+            )
             threads.append(thread)
         for thread in threads:
             thread.start()
@@ -229,4 +243,5 @@ def orchestrate_uploads(
             thread.join()
     else:
         for upload_request in upload_requests:
-            __handle_upload_job(upload_request, lrr_host, lrr_api_key)
+            __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
+    print(f"Uploaded {upload_counter} new archives.")
