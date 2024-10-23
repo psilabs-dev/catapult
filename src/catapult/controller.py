@@ -5,11 +5,11 @@ from pathlib import Path
 import requests
 import threading
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 from .constants import ALLOWED_SIGNATURES
 from .models import ArchiveMetadata, ArchiveUploadRequest
-from .utils import calculate_sha1, lrr_build_auth
+from .utils import calculate_sha1, lrr_build_auth, lrr_compute_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,52 @@ def test_connection(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
                 headers=headers
             )
             return response
+        except requests.ConnectionError as conn_err:
+            if max_retries < 0 or retry_count < max_retries:
+                time_to_sleep = 2 ** retry_count
+                logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
+                time.sleep(time_to_sleep)
+                retry_count += 1
+                continue
+            else:
+                raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
+        except requests.Timeout as timeout_err:
+            if max_retries < 0 or retry_count < max_retries:
+                time_to_sleep = 2 ** (retry_count + 5)
+                logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
+                time.sleep(time_to_sleep)
+                retry_count += 1
+                continue
+            else:
+                raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
+
+def get_archive_ids(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> Set[str]:
+    """
+    Get all archive IDs as a set.
+    """
+    retry_count = 0
+    url = f"{lrr_host}/api/archives"
+
+    headers = dict()
+    if lrr_api_key:
+        auth = lrr_build_auth(lrr_api_key)
+        headers["Authorization"] = auth
+
+    while True:
+        try:
+            response = requests.get(
+                url,
+                headers=headers
+            )
+            status_code = response.status_code
+            if status_code == 200:
+                archive_ids = set()
+                for obj in response.json():
+                    archive_ids.add(obj['arcid'])
+                return archive_ids
+            else:
+                requests.HTTPError(f"Unhandled status code {status_code}: {response.text}")
+
         except requests.ConnectionError as conn_err:
             if max_retries < 0 or retry_count < max_retries:
                 time_to_sleep = 2 ** retry_count
@@ -220,19 +266,36 @@ def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: s
     """
     Orchestrate multiple upload jobs to LANraragi.
     """
+    fn_call_start = time.time()
 
     # connection must be available.
     is_connected = test_connection(lrr_host, lrr_api_key=lrr_api_key).status_code == 200
     if not is_connected:
         raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
 
-    fn_call_start = time.time()
+    # get all existing archive IDs from server first; this will be used to prevent uploading duplicates and wasting requests later.
+    logger.debug("Fetching Archive IDs...")
+    archive_id_set = get_archive_ids(lrr_host, lrr_api_key=lrr_api_key)
+    logger.info("Fetched Archive IDs.")
+
+    # remove requests that have same ID.
+    nonduplicate_upload_requests = list()
+    num_duplicates = 0
+    for upload_request in upload_requests:
+        archive_file_path = upload_request.archive_file_path
+        local_archive_id = lrr_compute_id(archive_file_path)
+        if local_archive_id in archive_id_set: # duplicate detected
+            num_duplicates += 1
+            continue
+        else:
+            nonduplicate_upload_requests.append(upload_request)
+    logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
 
     upload_counter = [0]
     if use_threading:
         lock = threading.Lock()
         threads:List[threading.Thread] = list()
-        for upload_request in upload_requests:
+        for upload_request in nonduplicate_upload_requests:
             thread = threading.Thread(
                 target=__handle_upload_job, 
                 args=(upload_request, lrr_host, lrr_api_key, upload_counter),
@@ -244,7 +307,7 @@ def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: s
         for thread in threads:
             thread.join()
     else:
-        for upload_request in upload_requests:
+        for upload_request in nonduplicate_upload_requests:
             __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
 
     fn_call_time = time.time() - fn_call_start
