@@ -1,3 +1,5 @@
+from pathlib import Path
+CONFIG_DIR = Path.home() / ".catapult"
 
 ALLOWED_SIGNATURES = [
 
