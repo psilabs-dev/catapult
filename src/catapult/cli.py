@@ -5,7 +5,7 @@ from pathlib import Path
 import toml
 
 from .constants import CONFIG_DIR
-from .controller import upload_archive_to_server, validate_archive_file
+from .controller import test_connection, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
 
@@ -18,6 +18,11 @@ def main():
 
     # configure subparser
     configure_subparser = subparsers.add_parser("configure", help="Configure catapult settings.")
+
+    # check subparser
+    check_subparser = subparsers.add_parser("check", help="Check connection to server instance.")
+    check_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
+    check_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
 
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")
@@ -76,9 +81,46 @@ def main():
         else:
             return 0
 
+    elif command == "check":
+        arg_lrr_host = args.lrr_host
+        arg_lrr_api_key = args.lrr_api_key
+
+        # get configurations
+        lrr_host: str
+        lrr_api_key: str
+
+        # get default configuration if available
+        config_file = CONFIG_DIR / "catapult.toml"
+        if config_file.exists():
+            with open(config_file, 'r') as reader:
+                configuration = toml.load(reader)
+                lrr_host = configuration['default']['lrr_host']
+                lrr_api_key = configuration['default']['lrr_api_key']
+
+        # override with environment variables
+        lrr_host = os.getenv('LRR_HOST', lrr_host)
+        lrr_api_key = os.getenv('LRR_API_KEY', lrr_api_key)
+
+        # override with command arguments if applicable
+        if arg_lrr_host:
+            lrr_host = arg_lrr_host
+        if arg_lrr_api_key:
+            lrr_api_key = arg_lrr_api_key
+        
+        response = test_connection(lrr_host, lrr_api_key=lrr_api_key)
+        status_code = response.status_code
+        if status_code == 200:
+            print('success')
+            return 0
+        else:
+            error_message = response.json()['error']
+            print(f"Failed to connect (status code {status_code}): {error_message}")
+            return 1
+
     elif command == "validate":
         file_path = args.filepath
         print(validate_archive_file(file_path))
+
     elif command == "upload":
         file_path = args.filepath
         title = args.title

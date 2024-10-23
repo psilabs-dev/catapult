@@ -32,6 +32,44 @@ def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
             return True, "success"
     return False, "failed the MIME test" # file MIME type not supported by LANraragi.
 
+def test_connection(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
+    """
+    Test connection to LANraragi server.
+    """
+    retry_count = 0
+    url = f"{lrr_host}/api/info"
+
+    headers = dict()
+    if lrr_api_key:
+        auth = lrr_build_auth(lrr_api_key)
+        headers["Authorization"] = auth
+
+    while True:
+        try:
+            response = requests.get(
+                url,
+                headers=headers
+            )
+            return response
+        except requests.ConnectionError as conn_err:
+            if max_retries < 0 or retry_count < max_retries:
+                time_to_sleep = 2 ** retry_count
+                logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
+                time.sleep(time_to_sleep)
+                retry_count += 1
+                continue
+            else:
+                raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
+        except requests.Timeout as timeout_err:
+            if max_retries < 0 or retry_count < max_retries:
+                time_to_sleep = 2 ** (retry_count + 5)
+                logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
+                time.sleep(time_to_sleep)
+                retry_count += 1
+                continue
+            else:
+                raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
+
 def upload_archive_to_server(
         archive_file_path: str,
         metadata: ArchiveMetadata,
