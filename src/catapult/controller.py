@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import multiprocessing
+import multiprocessing.pool
 import os
 from pathlib import Path
 import requests
@@ -7,10 +9,10 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
-from .constants import ALLOWED_SIGNATURES
-from .models import ArchiveMetadata, ArchiveUploadRequest
-from .services import nhentai_archivist
-from .utils import calculate_sha1, lrr_build_auth, lrr_compute_id
+from catapult.constants import ALLOWED_SIGNATURES
+from catapult.models import ArchiveMetadata, ArchiveUploadRequest
+from catapult.services import common, nhentai_archivist
+from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id
 
 logger = logging.getLogger(__name__)
 
@@ -263,9 +265,39 @@ def __handle_upload_job(
         else:
             raise requests.HTTPError(f"status code {status_code}; error {response.text}")
 
+def __is_duplicate(upload_request: ArchiveUploadRequest, archive_id_set: Set[str]) -> Tuple[bool, ArchiveUploadRequest]:
+    """
+    Check if an upload is a duplicate of existing archive set in server.
+    """
+    local_archive_id = lrr_compute_id(upload_request.archive_file_path)
+    return (local_archive_id in archive_id_set, upload_request)
+
+def __find_nonduplicate_upload_requests_from_all_upload_requests(
+        upload_requests: List[ArchiveUploadRequest], archive_id_set: Set[str],
+        use_multiprocessing: bool=False,
+) -> List[ArchiveUploadRequest]:
+    nonduplicate_upload_requests = list()
+    if use_multiprocessing:
+        with multiprocessing.Pool() as pool:
+            results = pool.starmap(__is_duplicate, [(upload_request, archive_id_set) for upload_request in upload_requests])
+        num_duplicates = sum(1 for is_dup, _ in results if is_dup)
+        nonduplicate_upload_requests = [req for is_dup, req in results if not is_dup]
+    else:
+        num_duplicates = 0
+        for upload_request in upload_requests:
+            archive_file_path = upload_request.archive_file_path
+            local_archive_id = lrr_compute_id(archive_file_path)
+            if local_archive_id in archive_id_set: # duplicate detected
+                num_duplicates += 1
+                continue
+            else:
+                nonduplicate_upload_requests.append(upload_request)
+    logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
+    return nonduplicate_upload_requests
+
 def upload_archives_to_server(
-        upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False,
-        remove_duplicates: bool=False,
+        upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False, 
+        use_multiprocessing: bool=False, use_threading: bool=False,
 ):
     """
     Execute multiple archive uploads to LANraragi.
@@ -288,18 +320,9 @@ def upload_archives_to_server(
         logger.info("Fetched Archive IDs.")
 
         logger.info("Removing duplicate requests...")
-        num_duplicates = 0
-        nonduplicate_upload_requests = list()
-        for upload_request in upload_requests:
-            archive_file_path = upload_request.archive_file_path
-            local_archive_id = lrr_compute_id(archive_file_path)
-            if local_archive_id in archive_id_set: # duplicate detected
-                num_duplicates += 1
-                continue
-            else:
-                nonduplicate_upload_requests.append(upload_request)
-        logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
-        upload_requests = nonduplicate_upload_requests
+        upload_requests = __find_nonduplicate_upload_requests_from_all_upload_requests(
+            upload_requests, archive_id_set, use_multiprocessing=use_multiprocessing
+        )
 
     logger.info("Starting upload job...")
     upload_counter = [0]
@@ -325,7 +348,26 @@ def upload_archives_to_server(
     logger.info(f"Uploaded {upload_counter} new archives; elapsed time: {fn_call_time}s.")
     return upload_counter[0]
 
-def start_nhentai_archivist_upload_process(db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, use_threading: bool=False):
+def start_folder_upload_process(
+        contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
+        use_threading: bool=False, use_multiprocessing: bool=False
+):
+    """
+    Upload archives found in a folder.
+    """
+    logger.info("Building folder archive upload requests...")
+    upload_requests = common.build_upload_requests(contents_directory)
+    logger.info("Running upload job for folder...")
+    uploads = upload_archives_to_server(
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing
+    )
+    return uploads
+
+def start_nhentai_archivist_upload_process(
+        db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
+        use_threading: bool=False, use_multiprocessing: bool=False
+):
     """
     Upload archives downloaded by nhentai archivist.
     """
@@ -335,5 +377,8 @@ def start_nhentai_archivist_upload_process(db: str, contents_directory: str, lrr
     logger.info("Building nhentai archivist upload requests...")
     upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
     logger.info("Running upload job for nhentai archivist...")
-    uploads = upload_archives_to_server(upload_requests, lrr_host, lrr_api_key=lrr_api_key, use_threading=use_threading)
+    uploads = upload_archives_to_server(
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing
+    )
     return uploads

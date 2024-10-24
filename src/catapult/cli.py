@@ -6,7 +6,7 @@ from pathlib import Path
 import toml
 
 from .constants import CATAPULT_HOME, CATAPULT_CONFIG_FILE
-from .controller import start_nhentai_archivist_upload_process, test_connection, upload_archive_to_server, validate_archive_file
+from .controller import start_folder_upload_process, start_nhentai_archivist_upload_process, test_connection, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
 
@@ -47,12 +47,21 @@ def main():
     # jobs subparser
     plugins_subparser = subparsers.add_parser("plugin", help="Plugins command")
     plugins_subparsers = plugins_subparser.add_subparsers(dest='plugin_command')
+    folder_parser = plugins_subparsers.add_parser('folder', help="Upload archives from folder.")
+    folder_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
+    folder_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
+    folder_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
+    folder_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
+    folder_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
+    folder_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
     nh_parser = plugins_subparsers.add_parser('nhentai-archivist', help="Nhentai archivist upload jobs.")
     nh_parser.add_argument('db', type=str, help='Path to nhentai archivist database.')
     nh_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
     nh_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
     nh_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
     nh_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
+    nh_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
+    nh_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
 
     args = parser.parse_args()
     command = args.command
@@ -203,12 +212,13 @@ def main():
 
     elif command == 'plugin':
         plugin_command = args.plugin_command
-        if plugin_command == 'nhentai-archivist':
-            db = args.db
+        if plugin_command == 'folder':
             contents_directory = args.folder
             arg_lrr_host = args.lrr_host
             arg_lrr_api_key = args.lrr_api_key
+            remove_duplicates = args.remove_duplicates
             use_threading = args.threading
+            use_multiprocessing = args.multiprocessing
 
             # get configurations
             lrr_host: str = None
@@ -232,4 +242,42 @@ def main():
             if arg_lrr_api_key:
                 lrr_api_key = arg_lrr_api_key
 
-            start_nhentai_archivist_upload_process(db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, use_threading=use_threading)
+            start_folder_upload_process(
+                contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+                use_threading=use_threading, use_multiprocessing=use_multiprocessing
+            )
+        elif plugin_command == 'nhentai-archivist':
+            db = args.db
+            contents_directory = args.folder
+            arg_lrr_host = args.lrr_host
+            arg_lrr_api_key = args.lrr_api_key
+            remove_duplicates = args.remove_duplicates
+            use_threading = args.threading
+            use_multiprocessing = args.multiprocessing
+
+            # get configurations
+            lrr_host: str = None
+            lrr_api_key: str = None
+
+            # get default configuration if available
+            CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
+            if CATAPULT_CONFIG_FILE.exists():
+                with open(CATAPULT_CONFIG_FILE, 'r') as reader:
+                    configuration = toml.load(reader)
+                    lrr_host = configuration['default']['lrr_host']
+                    lrr_api_key = configuration['default']['lrr_api_key']
+
+            # override with environment variables
+            lrr_host = os.getenv('LRR_HOST', lrr_host)
+            lrr_api_key = os.getenv('LRR_API_KEY', lrr_api_key)
+
+            # override with command arguments if applicable
+            if arg_lrr_host:
+                lrr_host = arg_lrr_host
+            if arg_lrr_api_key:
+                lrr_api_key = arg_lrr_api_key
+
+            start_nhentai_archivist_upload_process(
+                db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+                use_threading=use_threading, use_multiprocessing=use_multiprocessing
+            )

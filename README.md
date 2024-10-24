@@ -31,21 +31,28 @@ catapult configure
 # LANraragi API key [a***1]: 
 ```
 
-Validate whether a file can be uploaded:
+Validate whether a file is a valid, uploadable Archive:
 ```sh
 catapult validate Dockerfile
 # (False, 'cannot have no extension')
+catapult validate tests/resources/fake.cbz
+# (False, 'failed the MIME test')
 ```
 
 Upload a file to the configured LANraragi server:
 ```sh
-catapult upload ...
+catapult upload /path/to/archive
 ```
 
-Upload archives from an nhentai_archivist instance.
+Upload all Archives from a folder.
 ```sh
-catapult plugin nhentai-archivist path-to-db path-to-downloads
-# starts uploading downloaded archives...
+catapult plugin folder /path/to/archives
+# starts uploading all archives found in /path/to/archives...
+```
+Upload all Archives from an nhentai_archivist instance.
+```sh
+catapult plugin nhentai-archivist /path/to/db /path/to/downloads
+# starts uploading downloaded archives found in /path/to/downloads with metadata from /path/to/db...
 ```
 
 ## Configuration
