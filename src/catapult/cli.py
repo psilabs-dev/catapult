@@ -11,6 +11,9 @@ from .models import ArchiveMetadata
 from .utils import get_version, mask_string
 
 def main():
+
+    global CATAPULT_CONFIG_FILE, CATAPULT_HOME
+
     parser = argparse.ArgumentParser("catapult command line")
     log_level = parser.add_argument('--log-level', type=str, default='warning', help='Set log level.')
 
@@ -104,7 +107,6 @@ def main():
         lrr_api_key: str = None
 
         # get default configuration if available
-        CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
         if CATAPULT_CONFIG_FILE.exists():
             with open(CATAPULT_CONFIG_FILE, 'r') as reader:
                 configuration = toml.load(reader)
