@@ -100,8 +100,8 @@ def main():
         arg_lrr_api_key = args.lrr_api_key
 
         # get configurations
-        lrr_host: str
-        lrr_api_key: str
+        lrr_host: str = None
+        lrr_api_key: str = None
 
         # get default configuration if available
         CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
@@ -157,8 +157,8 @@ def main():
             return 1
 
         # get configurations
-        lrr_host: str
-        lrr_api_key: str
+        lrr_host: str = None
+        lrr_api_key: str = None
 
         # get default configuration if available
         CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
@@ -207,6 +207,10 @@ def main():
             arg_lrr_host = args.lrr_host
             arg_lrr_api_key = args.lrr_api_key
             use_threading = args.threading
+
+            # get configurations
+            lrr_host: str = None
+            lrr_api_key: str = None
 
             # get default configuration if available
             CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
