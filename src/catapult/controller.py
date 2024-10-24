@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, Future
 import hashlib
 import logging
 import multiprocessing
@@ -297,7 +298,7 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
 
 def upload_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False, 
-        use_multiprocessing: bool=False, use_threading: bool=False,
+        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=20,
 ):
     """
     Execute multiple archive uploads to LANraragi.
@@ -328,18 +329,20 @@ def upload_archives_to_server(
     upload_counter = [0]
     if use_threading:
         lock = threading.Lock()
-        threads:List[threading.Thread] = list()
-        for upload_request in upload_requests:
-            thread = threading.Thread(
-                target=__handle_upload_job, 
-                args=(upload_request, lrr_host, lrr_api_key, upload_counter),
-                kwargs={'lock': lock}
-            )
-            threads.append(thread)
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        with ThreadPoolExecutor(max_workers=max_upload_workers) as executor:
+            futures: List[Future] = list()
+            for upload_request in upload_requests:
+                future = executor.submit(
+                    __handle_upload_job,
+                    upload_request,
+                    lrr_host,
+                    lrr_api_key,
+                    upload_counter,
+                    lock=lock
+                )
+                futures.append(future)
+            for future in futures:
+                future.result()
     else:
         for upload_request in upload_requests:
             __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
