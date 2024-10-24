@@ -2,13 +2,7 @@
 
 A LANraragi file upload toolkit.
 
-## Installation guide
-
-Build Docker image
-```sh
-docker build -t catapult .
-```
-
+## Quickstart
 Install from source:
 ```sh
 pip install .
@@ -17,19 +11,31 @@ Verify installation:
 ```sh
 catapult version
 ```
-Test connection to a server:
-```sh
-catapult check
-# success
-```
-
-## Usage
-Configure `catapult` default settings, which are saved at `~/.config/catapult/catapult.toml`.
+Configure default settings, which are saved at `~/.config/catapult/catapult.toml`.
 ```sh
 catapult configure
 # LANraragi Host [http://lanraragi]: 
-# LANraragi API key [a***1]: 
+# LANraragi API key [a***y]: 
 ```
+> You can overwrite these settings using `catapult configure`.
+
+Confirm that `catapult` can reach the server:
+```sh
+catapult check
+# success; otherwise throws some error
+```
+Upload an Archive to the LANraragi server:
+```sh
+catapult upload /path/to/Archive
+# Uploaded /path/to/Archive to server.
+```
+You can add metadata or change/override the LANraragi url/API key.
+```sh
+catapult upload /path/to/Archive --title some-title --tags "key:value" --lrr-host http://lanraragi2
+```
+> See the [CLI](src/catapult/cli.py) for more details.
+
+### Supporting Commands
 
 Validate whether a file is a valid, uploadable Archive:
 ```sh
@@ -39,10 +45,7 @@ catapult validate tests/resources/fake.cbz
 # (False, 'failed the MIME test')
 ```
 
-Upload a file to the configured LANraragi server:
-```sh
-catapult upload /path/to/archive
-```
+### Multi-Archive Uploads
 
 Upload all Archives from a folder.
 ```sh
@@ -54,6 +57,7 @@ Upload all Archives from an nhentai_archivist instance.
 catapult plugin nhentai-archivist /path/to/db /path/to/downloads
 # starts uploading downloaded archives found in /path/to/downloads with metadata from /path/to/db...
 ```
+`catapult` supports multithreading for uploads and multiprocessing for compute-intensive hash checks.
 
 ## Configuration
 There are several ways to configure `catapult`,
@@ -72,13 +76,13 @@ Assuming configurations are nonempty; command line arguments will *always* overr
 
 ## Development
 
-Run integration tests against a LANraragi docker instance. Setup instances, add API key and configure permissions with compose.
+Run integration tests against a LANraragi docker instance. This setup script will create an LRR instance, inject it with an API key, and apply permissions.
 ```sh
 ./integration/setup.sh
 ```
 This instance will have the API key `lanraragi`.
 
-Teardown instances:
+Teardown instances when done:
 ```sh
 ./integrations/teardown.sh
 ```
