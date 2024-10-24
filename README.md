@@ -42,6 +42,12 @@ Upload a file to the configured LANraragi server:
 catapult upload ...
 ```
 
+Upload archives from an nhentai_archivist instance.
+```sh
+catapult plugin nhentai-archivist path-to-db path-to-downloads
+# starts uploading downloaded archives...
+```
+
 ## Configuration
 There are several ways to configure `catapult`,
 
