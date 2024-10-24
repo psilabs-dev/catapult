@@ -270,16 +270,19 @@ def upload_archives_to_server(upload_requests: List[ArchiveUploadRequest], lrr_h
     fn_call_start = time.time()
 
     # connection must be available.
+    logger.info("Testing connection to LANraragi server...")
     is_connected = test_connection(lrr_host, lrr_api_key=lrr_api_key).status_code == 200
     if not is_connected:
         raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
+    logger.info("Successfully connected.")
 
     # get all existing archive IDs from server first; this will be used to prevent uploading duplicates and wasting requests later.
-    logger.debug("Fetching Archive IDs...")
+    logger.info("Fetching Archive IDs...")
     archive_id_set = get_archive_ids(lrr_host, lrr_api_key=lrr_api_key)
     logger.info("Fetched Archive IDs.")
 
     # remove requests that have same ID.
+    logger.info("Removing duplicate requests...")
     nonduplicate_upload_requests = list()
     num_duplicates = 0
     for upload_request in upload_requests:
@@ -292,6 +295,7 @@ def upload_archives_to_server(upload_requests: List[ArchiveUploadRequest], lrr_h
             nonduplicate_upload_requests.append(upload_request)
     logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
 
+    logger.info("Starting upload job...")
     upload_counter = [0]
     if use_threading:
         lock = threading.Lock()
