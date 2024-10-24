@@ -1,16 +1,19 @@
 import argparse
 from collections import OrderedDict
+import logging
 import os
 from pathlib import Path
 import toml
 
 from .constants import CATAPULT_HOME, CATAPULT_CONFIG_FILE
-from .controller import test_connection, upload_archive_to_server, validate_archive_file
+from .controller import start_nhentai_archivist_upload_process, test_connection, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
 
 def main():
     parser = argparse.ArgumentParser("catapult command line")
+    log_level = parser.add_argument('--log-level', type=str, default='warning', help='Set log level.')
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # version subparser
@@ -38,8 +41,20 @@ def main():
     upload_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
     upload_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
 
+    # jobs subparser
+    plugins_subparser = subparsers.add_parser("plugin", help="Plugins command")
+    plugins_subparsers = plugins_subparser.add_subparsers(dest='plugin_command')
+    nh_parser = plugins_subparsers.add_parser('nhentai-archivist', help="Nhentai archivist upload jobs.")
+    nh_parser.add_argument('db', type=str, help='Path to nhentai archivist database.')
+    nh_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
+    nh_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
+    nh_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
+    nh_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
+
     args = parser.parse_args()
     command = args.command
+
+    logging.basicConfig(level=args.log_level.upper())
 
     if command == "version":
         print(get_version())
@@ -183,3 +198,32 @@ def main():
             error_message = response.json()['error']
             print(f"Failed to upload file (status code {status_code}): {error_message}")
             return 1
+
+    elif command == 'plugin':
+        plugin_command = args.plugin_command
+        if plugin_command == 'nhentai-archivist':
+            db = args.db
+            contents_directory = args.folder
+            arg_lrr_host = args.lrr_host
+            arg_lrr_api_key = args.lrr_api_key
+            use_threading = args.threading
+
+            # get default configuration if available
+            CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
+            if CATAPULT_CONFIG_FILE.exists():
+                with open(CATAPULT_CONFIG_FILE, 'r') as reader:
+                    configuration = toml.load(reader)
+                    lrr_host = configuration['default']['lrr_host']
+                    lrr_api_key = configuration['default']['lrr_api_key']
+
+            # override with environment variables
+            lrr_host = os.getenv('LRR_HOST', lrr_host)
+            lrr_api_key = os.getenv('LRR_API_KEY', lrr_api_key)
+
+            # override with command arguments if applicable
+            if arg_lrr_host:
+                lrr_host = arg_lrr_host
+            if arg_lrr_api_key:
+                lrr_api_key = arg_lrr_api_key
+
+            start_nhentai_archivist_upload_process(db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, use_threading=use_threading)
