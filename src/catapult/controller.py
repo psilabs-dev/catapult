@@ -263,7 +263,10 @@ def __handle_upload_job(
         else:
             raise requests.HTTPError(f"status code {status_code}; error {response.text}")
 
-def upload_archives_to_server(upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False):
+def upload_archives_to_server(
+        upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False,
+        remove_duplicates: bool=False,
+):
     """
     Execute multiple archive uploads to LANraragi.
     """
@@ -276,31 +279,34 @@ def upload_archives_to_server(upload_requests: List[ArchiveUploadRequest], lrr_h
         raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
     logger.info("Successfully connected.")
 
-    # get all existing archive IDs from server first; this will be used to prevent uploading duplicates and wasting requests later.
-    logger.info("Fetching Archive IDs...")
-    archive_id_set = get_archive_ids(lrr_host, lrr_api_key=lrr_api_key)
-    logger.info("Fetched Archive IDs.")
 
-    # remove requests that have same ID.
-    logger.info("Removing duplicate requests...")
-    nonduplicate_upload_requests = list()
-    num_duplicates = 0
-    for upload_request in upload_requests:
-        archive_file_path = upload_request.archive_file_path
-        local_archive_id = lrr_compute_id(archive_file_path)
-        if local_archive_id in archive_id_set: # duplicate detected
-            num_duplicates += 1
-            continue
-        else:
-            nonduplicate_upload_requests.append(upload_request)
-    logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
+    # remove requests that have same ID. (can be very slow)
+    if remove_duplicates:
+        # get all existing archive IDs from server first; this will be used to prevent uploading duplicates and wasting requests later.
+        logger.info("Fetching Archive IDs...")
+        archive_id_set = get_archive_ids(lrr_host, lrr_api_key=lrr_api_key)
+        logger.info("Fetched Archive IDs.")
+
+        logger.info("Removing duplicate requests...")
+        num_duplicates = 0
+        nonduplicate_upload_requests = list()
+        for upload_request in upload_requests:
+            archive_file_path = upload_request.archive_file_path
+            local_archive_id = lrr_compute_id(archive_file_path)
+            if local_archive_id in archive_id_set: # duplicate detected
+                num_duplicates += 1
+                continue
+            else:
+                nonduplicate_upload_requests.append(upload_request)
+        logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
+        upload_requests = nonduplicate_upload_requests
 
     logger.info("Starting upload job...")
     upload_counter = [0]
     if use_threading:
         lock = threading.Lock()
         threads:List[threading.Thread] = list()
-        for upload_request in nonduplicate_upload_requests:
+        for upload_request in upload_requests:
             thread = threading.Thread(
                 target=__handle_upload_job, 
                 args=(upload_request, lrr_host, lrr_api_key, upload_counter),
@@ -326,6 +332,8 @@ def start_nhentai_archivist_upload_process(db: str, contents_directory: str, lrr
     if not nhentai_archivist.is_available(db, contents_directory):
         logger.error("Nhentai archivist is not available.")
         return
+    logger.info("Building nhentai archivist upload requests...")
     upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
+    logger.info("Running upload job for nhentai archivist...")
     uploads = upload_archives_to_server(upload_requests, lrr_host, lrr_api_key=lrr_api_key, use_threading=use_threading)
     return uploads
