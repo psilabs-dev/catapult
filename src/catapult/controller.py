@@ -318,7 +318,7 @@ def upload_archives_to_server(
         for thread in threads:
             thread.join()
     else:
-        for upload_request in nonduplicate_upload_requests:
+        for upload_request in upload_requests:
             __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
 
     fn_call_time = time.time() - fn_call_start
