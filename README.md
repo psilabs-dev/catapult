@@ -62,3 +62,16 @@ Assuming configurations are nonempty; command line arguments will *always* overr
 `LRR_HOST`: absolute URL to the LANraragi server.
 
 `LRR_API_KEY`: API key for the LANraragi server.
+
+## Development
+
+Run integration tests against a LANraragi docker instance. Setup instances, add API key and configure permissions with compose.
+```sh
+./integration/setup.sh
+```
+This instance will have the API key `lanraragi`.
+
+Teardown instances:
+```sh
+./integrations/teardown.sh
+```

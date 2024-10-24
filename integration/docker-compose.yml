@@ -1,0 +1,22 @@
+services:
+
+  redis:
+    image: redis:7.2
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:6379:6379
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+
+  lanraragi:
+    image: ghcr.io/psilabs-dev/lanraragi:dev-0.9.30-EXPERIMENTAL-psilabs-52aa679a7fd5349ca13c5b138f8214b54b9843be
+    container_name: lanraragi
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:3000:3000
+    environment:
+      - "LRR_REDIS_ADDRESS=redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
