@@ -9,6 +9,7 @@ from typing import Dict, List, Set, Tuple
 
 from .constants import ALLOWED_SIGNATURES
 from .models import ArchiveMetadata, ArchiveUploadRequest
+from .services import nhentai_archivist
 from .utils import calculate_sha1, lrr_build_auth, lrr_compute_id
 
 logger = logging.getLogger(__name__)
@@ -262,9 +263,9 @@ def __handle_upload_job(
         else:
             raise requests.HTTPError(f"status code {status_code}; error {response.text}")
 
-def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False):
+def upload_archives_to_server(upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, use_threading: bool=False):
     """
-    Orchestrate multiple upload jobs to LANraragi.
+    Execute multiple archive uploads to LANraragi.
     """
     fn_call_start = time.time()
 
@@ -311,4 +312,16 @@ def orchestrate_uploads(upload_requests: List[ArchiveUploadRequest], lrr_host: s
             __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
 
     fn_call_time = time.time() - fn_call_start
-    print(f"Uploaded {upload_counter} new archives; elapsed time: {fn_call_time}s.")
+    logger.info(f"Uploaded {upload_counter} new archives; elapsed time: {fn_call_time}s.")
+    return upload_counter[0]
+
+def start_nhentai_archivist_upload_process(db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, use_threading: bool=False):
+    """
+    Upload archives downloaded by nhentai archivist.
+    """
+    if not nhentai_archivist.is_available(db, contents_directory):
+        logger.error("Nhentai archivist is not available.")
+        return
+    upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
+    uploads = upload_archives_to_server(upload_requests, lrr_host, lrr_api_key=lrr_api_key, use_threading=use_threading)
+    return uploads

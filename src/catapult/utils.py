@@ -1,14 +1,29 @@
 import base64
 import hashlib
 import logging
+import os
 import requests
 import time
+from typing import List
 
 logger = logging.getLogger(__name__)
 
 def get_version() -> str:
     import importlib.metadata
     return importlib.metadata.version("catapult")
+
+def find_all_archives(root_directory: str) -> List[str]:
+    # find all archives in subdirectories of a root directory.
+    # checked extensions:
+    file_paths = list()
+    for dir, _, filenames in os.walk(root_directory):
+        for filename in filenames:
+            extension = os.path.splitext(filename)[1]
+            if extension[1:] not in {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}:
+                continue
+            file_path = os.path.join(dir, filename)
+            file_paths.append(file_path)
+    return file_paths
 
 def mask_string(s) -> str:
     if len(s) <= 2:

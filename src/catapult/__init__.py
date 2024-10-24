@@ -1,2 +1,2 @@
-from .controller import orchestrate_uploads, upload_archive_to_server, validate_archive_file
+from .controller import upload_archives_to_server, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata, ArchiveUploadRequest
