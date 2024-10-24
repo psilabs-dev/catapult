@@ -86,7 +86,7 @@ def is_available(db: str, contents_directory: str) -> bool:
     """
     if not Path(db).exists():
         return False
-    if not Path(contents_directory).exists():
+    if not Path(contents_directory).exists() or not Path(contents_directory).is_dir():
         return False
     try:
         conn = sqlite3.connect(db)
