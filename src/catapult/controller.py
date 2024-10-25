@@ -356,7 +356,7 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
 
 def upload_multiple_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False, 
-        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=20,
+        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=None,
 ) -> MultiArchiveUploadResponse:
     """
     Upload multiple Archives to the LANraragi server.
@@ -371,8 +371,12 @@ def upload_multiple_archives_to_server(
         API key for LANraragi server. Defaults to no key.
     remove_duplicates : bool, optional
         Remove duplicates from requests before the upload stage.
-    max_retries : int, optional
-        Max number of retries before client gives up; defaults to 3. If `max_retries` is set to -1, it will try forever.
+    use_multiprocessing : bool, False
+        Allow use of multiprocessing (e.g. for LRR ID computation and deduplication)
+    use_threading : bool, False
+        Allow use of multithreading for uploads
+    max_upload_workers : int, optional
+        Max number of threads to perform uploads. Defaults to 1 worker.
 
     Returns
     -------
@@ -383,8 +387,16 @@ def upload_multiple_archives_to_server(
     ConnectionError
         Cannot reach LANraragi server.
     """
+    if not max_upload_workers:
+        max_upload_workers = 1
+
     fn_call_start = time.time()
     response = MultiArchiveUploadResponse()
+
+    if not upload_requests:
+        logger.warning("Nothing to upload.")
+        response.uploaded_files = 0
+        return response
 
     # connection must be available.
     logger.info("Testing connection to LANraragi server...")
@@ -438,7 +450,7 @@ def upload_multiple_archives_to_server(
 
 def start_folder_upload_process(
         contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None
 ):
     """
     Upload archives found in a folder.
@@ -448,13 +460,13 @@ def start_folder_upload_process(
     logger.info("Running upload job for folder...")
     uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers
     )
     return uploads
 
 def start_nhentai_archivist_upload_process(
         db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None
 ):
     """
     Upload archives downloaded by nhentai archivist.
@@ -467,6 +479,6 @@ def start_nhentai_archivist_upload_process(
     logger.info("Running upload job for nhentai archivist...")
     uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers
     )
     return uploads

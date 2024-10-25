@@ -49,19 +49,17 @@ def main():
     plugins_subparsers = plugins_subparser.add_subparsers(dest='plugin_command')
     folder_parser = plugins_subparsers.add_parser('folder', help="Upload archives from folder.")
     folder_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
-    folder_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
-    folder_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
-    folder_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
-    folder_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
-    folder_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
     nh_parser = plugins_subparsers.add_parser('nhentai-archivist', help="Nhentai archivist upload jobs.")
     nh_parser.add_argument('db', type=str, help='Path to nhentai archivist database.')
     nh_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
-    nh_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
-    nh_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
-    nh_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
-    nh_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
-    nh_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
+
+    for plugin_parser in [folder_parser, nh_parser]:
+        plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
+        plugin_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
+        plugin_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
+        plugin_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
+        plugin_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
+        plugin_parser.add_argument('--upload-workers', type=int, default=1, help='Number of upload workers in a multithreaded job (default 1).')
 
     args = parser.parse_args()
     command = args.command
@@ -219,6 +217,7 @@ def main():
             remove_duplicates = args.remove_duplicates
             use_threading = args.threading
             use_multiprocessing = args.multiprocessing
+            upload_workers = args.upload_workers
 
             # get configurations
             lrr_host: str = None
@@ -244,7 +243,7 @@ def main():
 
             start_folder_upload_process(
                 contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-                use_threading=use_threading, use_multiprocessing=use_multiprocessing
+                use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers
             )
         elif plugin_command == 'nhentai-archivist':
             db = args.db
@@ -254,6 +253,7 @@ def main():
             remove_duplicates = args.remove_duplicates
             use_threading = args.threading
             use_multiprocessing = args.multiprocessing
+            upload_workers = args.upload_workers
 
             # get configurations
             lrr_host: str = None
@@ -279,5 +279,5 @@ def main():
 
             start_nhentai_archivist_upload_process(
                 db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-                use_threading=use_threading, use_multiprocessing=use_multiprocessing
+                use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers
             )
