@@ -13,3 +13,9 @@ class ArchiveUploadRequest:
         self.archive_file_path = archive_file_path
         self.archive_file_name = archive_file_name
         self.metadata = metadata
+
+class MultiArchiveUploadResponse:
+    """
+    Response object for multiple archive uploads.
+    """
+    uploaded_files: int

@@ -6,7 +6,7 @@ from pathlib import Path
 import toml
 
 from .constants import CATAPULT_HOME, CATAPULT_CONFIG_FILE
-from .controller import start_folder_upload_process, start_nhentai_archivist_upload_process, test_connection, upload_archive_to_server, validate_archive_file
+from .controller import start_folder_upload_process, start_nhentai_archivist_upload_process, run_lrr_connection_test, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
 
@@ -132,7 +132,7 @@ def main():
         if arg_lrr_api_key:
             lrr_api_key = arg_lrr_api_key
         
-        response = test_connection(lrr_host, lrr_api_key=lrr_api_key)
+        response = run_lrr_connection_test(lrr_host, lrr_api_key=lrr_api_key)
         status_code = response.status_code
         if status_code == 200:
             print('success')
