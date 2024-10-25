@@ -5,12 +5,13 @@ import stat
 import toml
 from typing import Tuple
 
-from catapult.constants import CATAPULT_CONFIG_FILE, CATAPULT_HOME
-
 class Configuration:
     """
     Configuration singleton object; holds configurations of the application.
     """
+
+    CATAPULT_HOME = Path.home() / ".catapult"
+    CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
 
     # application-specific config
     lrr_host: str = None
@@ -28,8 +29,8 @@ class Configuration:
         Initialize configuration singleton.
         """
         # load default file configuration.
-        if CATAPULT_CONFIG_FILE.exists():
-            with open(CATAPULT_CONFIG_FILE, 'r') as reader:
+        if self.CATAPULT_CONFIG_FILE.exists():
+            with open(self.CATAPULT_CONFIG_FILE, 'r') as reader:
                 curr_configuration = toml.load(reader)
                 self.lrr_host = curr_configuration['default']['lrr_host']
                 self.lrr_api_key = curr_configuration['default']['lrr_api_key']
@@ -47,16 +48,16 @@ class Configuration:
         """
         Save configuration to file.
         """
-        CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
+        self.CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
         configuration = OrderedDict([
             ('default', OrderedDict([
                 ('lrr_host', self.lrr_host),
                 ('lrr_api_key', self.lrr_api_key),
             ]))
         ])
-        with open(CATAPULT_CONFIG_FILE, 'w') as writer:
+        with open(self.CATAPULT_CONFIG_FILE, 'w') as writer:
             toml.dump(configuration, writer)
-        CATAPULT_CONFIG_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        self.CATAPULT_CONFIG_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     def is_valid(self) -> Tuple[bool, str]:
         """
