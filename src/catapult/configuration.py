@@ -17,11 +17,11 @@ class Configuration:
     lrr_api_key: str = None
 
     # upload folder-specific config
-    upload_folder: str = None
+    multi_upload_folder_dir: str = None
 
     # nhentai archivist-specific config
-    nhentai_archivist_db: str = None
-    nhentai_archivist_content_folder: str = None
+    multi_upload_nhentai_archivist_db: str = None
+    multi_upload_nhentai_archivist_content_dir: str = None
 
     def __init__(self):
         """
@@ -38,10 +38,10 @@ class Configuration:
         self.lrr_host = os.getenv('LRR_HOST', self.lrr_host)
         self.lrr_api_key = os.getenv('LRR_API_KEY', self.lrr_api_key)
     
-        self.upload_folder = os.getenv('UPLOAD_FOLDER', self.upload_folder)
+        self.multi_upload_folder_dir = os.getenv('MULTI_UPLOAD_FOLDER', self.multi_upload_folder_dir)
 
-        self.nhentai_archivist_db = os.getenv('NHENTAI_ARCHIVIST_DB', self.nhentai_archivist_db)
-        self.nhentai_archivist_content_folder = os.getenv('NHENTAI_ARCHIVIST_CONTENTS', self.nhentai_archivist_content_folder)
+        self.multi_upload_nhentai_archivist_db = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_DB', self.multi_upload_nhentai_archivist_db)
+        self.multi_upload_nhentai_archivist_content_dir = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS', self.multi_upload_nhentai_archivist_content_dir)
 
     def save(self):
         """

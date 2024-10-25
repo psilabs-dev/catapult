@@ -98,6 +98,10 @@ def __plugin(args):
         use_threading = args.threading
         use_multiprocessing = args.multiprocessing
         upload_workers = args.upload_workers
+
+        if contents_directory:
+            config.multi_upload_folder_dir = contents_directory
+
         start_folder_upload_process(
             contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers
@@ -109,6 +113,11 @@ def __plugin(args):
         use_threading = args.threading
         use_multiprocessing = args.multiprocessing
         upload_workers = args.upload_workers
+
+        if db:
+            config.multi_upload_nhentai_archivist_db = db
+        if contents_directory:
+            config.multi_upload_nhentai_archivist_content_dir = contents_directory
 
         start_nhentai_archivist_upload_process(
             db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,

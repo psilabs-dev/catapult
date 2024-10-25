@@ -70,9 +70,17 @@ Assuming configurations are nonempty; command line arguments will *always* overr
 
 ### Environment Variables
 
-`LRR_HOST`: absolute URL to the LANraragi server.
+Application-specific environment variables:
 
-`LRR_API_KEY`: API key for the LANraragi server.
+- `LRR_HOST`: absolute URL to the LANraragi server.
+- `LRR_API_KEY`: API key for the LANraragi server.
+
+Multi-upload from folder:
+- `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.
+
+Multi-upload from Nhentai Archivist:
+- `MULTI_UPLOAD_NH_ARCHIVIST_DB`: path to the nhentai archivist database.
+- `MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS`: path to the nhentai archivist downloaded contents directory.
 
 ## Development
 
