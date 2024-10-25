@@ -418,6 +418,11 @@ def upload_multiple_archives_to_server(
             upload_requests, archive_id_set, use_multiprocessing=use_multiprocessing
         )
 
+        if not upload_requests:
+            logger.warning("Nothing to upload.")
+            response.uploaded_files = 0
+            return response
+
     logger.info("Starting upload job...")
     upload_counter = [0]
     if use_threading:
