@@ -12,6 +12,7 @@ class Configuration:
 
     CATAPULT_HOME = Path.home() / ".catapult"
     CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
+    CATAPULT_CACHE_DB = CATAPULT_HOME / "cache.db"
 
     # application-specific config
     lrr_host: str = None
