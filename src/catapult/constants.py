@@ -1,6 +1,4 @@
 from pathlib import Path
-CATAPULT_HOME = Path.home() / ".catapult"
-CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
 
 ALLOWED_SIGNATURES = [
 
