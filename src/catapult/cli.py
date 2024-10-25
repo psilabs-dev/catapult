@@ -18,8 +18,11 @@ def __configure(args):
         lrr_host = input(f"LANraragi Host: ")
         lrr_api_key = getpass(f"LANraragi API key: ")
 
-    config.lrr_host = lrr_host
-    config.lrr_api_key = lrr_api_key
+    if lrr_host:
+        config.lrr_host = lrr_host
+    if lrr_api_key:
+        config.lrr_api_key = lrr_api_key
+
     config.save()
     return 0
 
