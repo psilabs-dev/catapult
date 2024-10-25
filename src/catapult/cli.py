@@ -92,7 +92,7 @@ def __plugin(args):
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
 
-    if plugin_command == 'folder':
+    if plugin_command == 'from-folder':
         contents_directory = args.folder
         remove_duplicates = args.remove_duplicates
         use_threading = args.threading
@@ -102,7 +102,7 @@ def __plugin(args):
             contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers
         )
-    elif plugin_command == 'nhentai-archivist':
+    elif plugin_command == 'from-nhentai-archivist':
         db = args.db
         contents_directory = args.folder
         remove_duplicates = args.remove_duplicates
@@ -148,15 +148,15 @@ def main():
     upload_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
 
     # jobs subparser
-    plugins_subparser = subparsers.add_parser("plugin", help="Plugins command")
-    plugins_subparsers = plugins_subparser.add_subparsers(dest='plugin_command')
-    folder_parser = plugins_subparsers.add_parser('folder', help="Upload archives from folder.")
-    folder_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
-    nh_parser = plugins_subparsers.add_parser('nhentai-archivist', help="Nhentai archivist upload jobs.")
-    nh_parser.add_argument('db', type=str, help='Path to nhentai archivist database.')
-    nh_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
+    multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
+    mu_subparsers = multiupload_subparser.add_subparsers(dest='plugin_command')
+    mu_folder_parser = mu_subparsers.add_parser('from-folder', help="Upload archives from folder.")
+    mu_folder_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
+    mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
+    mu_nh_parser.add_argument('db', type=str, help='Path to nhentai archivist database.')
+    mu_nh_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
 
-    for plugin_parser in [folder_parser, nh_parser]:
+    for plugin_parser in [mu_folder_parser, mu_nh_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
         plugin_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
         plugin_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
@@ -184,5 +184,5 @@ def main():
     elif command == "upload":
         return __upload(args)
 
-    elif command == 'plugin':
+    elif command == 'multi-upload':
         return __plugin(args)
