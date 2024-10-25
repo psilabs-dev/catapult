@@ -12,6 +12,15 @@ def get_version() -> str:
     import importlib.metadata
     return importlib.metadata.version("catapult")
 
+def coalesce(*args):
+    """
+    Return the first non-None argument. If all arguments are None, return None.
+    """
+    for arg in args:
+        if arg is not None:
+            return arg
+    return None
+
 def find_all_archives(root_directory: str) -> List[str]:
     # find all archives in subdirectories of a root directory.
     # checked extensions:
