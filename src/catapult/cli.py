@@ -86,7 +86,7 @@ def __upload(args):
         print(f"Failed to upload file (status code {status_code}): {error_message}")
         return 1
 
-def __plugin(args):
+def __multi_upload(args):
     plugin_command = args.plugin_command
 
     lrr_host = config.lrr_host
@@ -99,8 +99,8 @@ def __plugin(args):
         use_multiprocessing = args.multiprocessing
         upload_workers = args.upload_workers
 
-        if contents_directory:
-            config.multi_upload_folder_dir = contents_directory
+        if not contents_directory:
+            contents_directory = config.multi_upload_folder_dir
 
         start_folder_upload_process(
             contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
@@ -114,10 +114,10 @@ def __plugin(args):
         use_multiprocessing = args.multiprocessing
         upload_workers = args.upload_workers
 
-        if db:
-            config.multi_upload_nhentai_archivist_db = db
-        if contents_directory:
-            config.multi_upload_nhentai_archivist_content_dir = contents_directory
+        if not db:
+            db = config.multi_upload_nhentai_archivist_db
+        if not contents_directory:
+            contents_directory = config.multi_upload_nhentai_archivist_content_dir
 
         start_nhentai_archivist_upload_process(
             db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
@@ -160,10 +160,10 @@ def main():
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
     mu_subparsers = multiupload_subparser.add_subparsers(dest='plugin_command')
     mu_folder_parser = mu_subparsers.add_parser('from-folder', help="Upload archives from folder.")
-    mu_folder_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
+    mu_folder_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
     mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
-    mu_nh_parser.add_argument('db', type=str, help='Path to nhentai archivist database.')
-    mu_nh_parser.add_argument('folder', type=str, help='Path to nhentai archivist contents folder.')
+    mu_nh_parser.add_argument('--db', type=str, help='Path to nhentai archivist database.')
+    mu_nh_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
 
     for plugin_parser in [mu_folder_parser, mu_nh_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
@@ -194,4 +194,4 @@ def main():
         return __upload(args)
 
     elif command == 'multi-upload':
-        return __plugin(args)
+        return __multi_upload(args)
