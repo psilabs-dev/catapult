@@ -95,27 +95,25 @@ def __multi_upload(args):
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
 
+    remove_duplicates = args.remove_duplicates
+    use_threading = args.threading
+    use_multiprocessing = args.multiprocessing
+    upload_workers = args.upload_workers
+    use_cache = not args.no_cache
+
     if plugin_command == 'from-folder':
         contents_directory = args.folder
-        remove_duplicates = args.remove_duplicates
-        use_threading = args.threading
-        use_multiprocessing = args.multiprocessing
-        upload_workers = args.upload_workers
 
         if not contents_directory:
             contents_directory = config.multi_upload_folder_dir
 
         start_folder_upload_process(
             contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers
+            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
     elif plugin_command == 'from-nhentai-archivist':
         db = args.db
         contents_directory = args.folder
-        remove_duplicates = args.remove_duplicates
-        use_threading = args.threading
-        use_multiprocessing = args.multiprocessing
-        upload_workers = args.upload_workers
 
         if not db:
             db = config.multi_upload_nhentai_archivist_db
@@ -124,7 +122,7 @@ def __multi_upload(args):
 
         start_nhentai_archivist_upload_process(
             db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers
+            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
 
 def main():
@@ -175,6 +173,7 @@ def main():
         plugin_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
         plugin_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
         plugin_parser.add_argument('--upload-workers', type=int, default=1, help='Number of upload workers in a multithreaded job (default 1).')
+        plugin_parser.add_argument('--no-cache', action='store_true', help='Disable cache when remove duplicates.')
 
     args = parser.parse_args()
     command = args.command

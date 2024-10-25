@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Set, Tuple
 
 from catapult.constants import ALLOWED_SIGNATURES
+from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
 from catapult.services import common, nhentai_archivist
 from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id
@@ -317,16 +318,21 @@ def __handle_upload_job(
         else:
             raise requests.HTTPError(f"status code {status_code}; error {response.text}")
 
-def __is_duplicate(upload_request: ArchiveUploadRequest, archive_id_set: Set[str]) -> Tuple[bool, ArchiveUploadRequest]:
+def __is_duplicate(upload_request: ArchiveUploadRequest, archive_id_set: Set[str], use_cache: bool) -> Tuple[bool, ArchiveUploadRequest]:
     """
     Check if an upload is a duplicate of existing archive set in server.
     """
-    local_archive_id = lrr_compute_id(upload_request.archive_file_path)
+
+    # use cache
+    if use_cache:
+        local_archive_id = get_cached_archive_id_else_compute(upload_request.archive_file_path)
+    else:
+        local_archive_id = lrr_compute_id(upload_request.archive_file_path)
     return (local_archive_id in archive_id_set, upload_request)
 
 def __find_nonduplicate_upload_requests_from_all_upload_requests(
         upload_requests: List[ArchiveUploadRequest], archive_id_set: Set[str],
-        use_multiprocessing: bool=False,
+        use_multiprocessing: bool=False, use_cache: bool=True
 ) -> List[ArchiveUploadRequest]:
     """
     Filter the upload requests by requests whose Archive IDs do not exist in the server, and returns this filtered list.
@@ -338,15 +344,14 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
     nonduplicate_upload_requests = list()
     if use_multiprocessing:
         with multiprocessing.Pool() as pool:
-            results = pool.starmap(__is_duplicate, [(upload_request, archive_id_set) for upload_request in upload_requests])
+            results = pool.starmap(__is_duplicate, [(upload_request, archive_id_set, use_cache) for upload_request in upload_requests])
         num_duplicates = sum(1 for is_dup, _ in results if is_dup)
         nonduplicate_upload_requests = [req for is_dup, req in results if not is_dup]
     else:
         num_duplicates = 0
         for upload_request in upload_requests:
-            archive_file_path = upload_request.archive_file_path
-            local_archive_id = lrr_compute_id(archive_file_path)
-            if local_archive_id in archive_id_set: # duplicate detected
+            is_duplicate, _upload_request = __is_duplicate(upload_request, archive_id_set, use_cache)
+            if is_duplicate:
                 num_duplicates += 1
                 continue
             else:
@@ -356,7 +361,7 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
 
 def upload_multiple_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False, 
-        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=None,
+        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=None, use_cache: bool=True
 ) -> MultiArchiveUploadResponse:
     """
     Upload multiple Archives to the LANraragi server.
@@ -377,6 +382,8 @@ def upload_multiple_archives_to_server(
         Allow use of multithreading for uploads
     max_upload_workers : int, optional
         Max number of threads to perform uploads. Defaults to 1 worker.
+    use_cache : int, optional
+        Use cache for Archive-to-server deduplication (Default: True).
 
     Returns
     -------
@@ -415,7 +422,7 @@ def upload_multiple_archives_to_server(
 
         logger.info("Removing duplicate requests...")
         upload_requests = __find_nonduplicate_upload_requests_from_all_upload_requests(
-            upload_requests, archive_id_set, use_multiprocessing=use_multiprocessing
+            upload_requests, archive_id_set, use_multiprocessing=use_multiprocessing, use_cache=use_cache
         )
 
         if not upload_requests:
@@ -455,7 +462,7 @@ def upload_multiple_archives_to_server(
 
 def start_folder_upload_process(
         contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
 ):
     """
     Upload archives found in a folder.
@@ -465,13 +472,14 @@ def start_folder_upload_process(
     logger.info("Running upload job for folder...")
     uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
+        use_cache=use_cache
     )
     return uploads
 
 def start_nhentai_archivist_upload_process(
         db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
 ):
     """
     Upload archives downloaded by nhentai archivist.
@@ -484,6 +492,7 @@ def start_nhentai_archivist_upload_process(
     logger.info("Running upload job for nhentai archivist...")
     uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
+        use_cache=use_cache
     )
     return uploads
