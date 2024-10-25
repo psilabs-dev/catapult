@@ -14,6 +14,9 @@ def __configure(args):
     if config.lrr_api_key is not None and config.lrr_host is not None:
         lrr_host = input(f"LANraragi Host [{config.lrr_host}]: ")
         lrr_api_key = getpass(f"LANraragi API key [{mask_string(config.lrr_api_key)}]: ")
+        if not lrr_host and not lrr_api_key:
+            print("No changes to configuration.")
+            return 0
     else:
         lrr_host = input(f"LANraragi Host: ")
         lrr_api_key = getpass(f"LANraragi API key: ")
