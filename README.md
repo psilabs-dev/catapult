@@ -49,12 +49,12 @@ catapult validate tests/resources/fake.cbz
 
 Upload all Archives from a folder.
 ```sh
-catapult plugin folder /path/to/archives
+catapult multi-upload from-folder /path/to/archives
 # starts uploading all archives found in /path/to/archives...
 ```
 Upload all Archives from an nhentai_archivist instance.
 ```sh
-catapult plugin nhentai-archivist /path/to/db /path/to/downloads
+catapult multi-upload from-nhentai-archivist /path/to/db /path/to/downloads
 # starts uploading downloaded archives found in /path/to/downloads with metadata from /path/to/db...
 ```
 `catapult` supports multithreading for uploads and multiprocessing for compute-intensive hash checks.
@@ -70,9 +70,17 @@ Assuming configurations are nonempty; command line arguments will *always* overr
 
 ### Environment Variables
 
-`LRR_HOST`: absolute URL to the LANraragi server.
+Application-specific environment variables:
 
-`LRR_API_KEY`: API key for the LANraragi server.
+- `LRR_HOST`: absolute URL to the LANraragi server.
+- `LRR_API_KEY`: API key for the LANraragi server.
+
+Multi-upload from folder:
+- `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.
+
+Multi-upload from Nhentai Archivist:
+- `MULTI_UPLOAD_NH_ARCHIVIST_DB`: path to the nhentai archivist database.
+- `MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS`: path to the nhentai archivist downloaded contents directory.
 
 ## Development
 
@@ -80,7 +88,12 @@ Run integration tests against a LANraragi docker instance. This setup script wil
 ```sh
 ./integration/setup.sh
 ```
-This instance will have the API key `lanraragi`.
+> **Note**: This instance will have the API key `lanraragi`. 
+
+Upload an Archive to this local instance:
+```sh
+catapult upload /path/to/Archive --lrr-host http://localhost:3000 --lrr-api-key lanraragi
+```
 
 Teardown instances when done:
 ```sh

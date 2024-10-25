@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, Future
 import hashlib
 import logging
 import multiprocessing
@@ -10,7 +11,7 @@ import time
 from typing import Dict, List, Set, Tuple
 
 from catapult.constants import ALLOWED_SIGNATURES
-from catapult.models import ArchiveMetadata, ArchiveUploadRequest
+from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
 from catapult.services import common, nhentai_archivist
 from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id
 
@@ -18,9 +19,17 @@ logger = logging.getLogger(__name__)
 
 def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
     """
-    Validate the archive file path for upload by checking its extension and MIME type.
+    Validate an Archive for upload by checking file extension and MIME type.
+    
+    Parameters
+    ----------
+    archive_file_path : str
+        Path to an archive file.
 
-    Returns True, success if archive can be submitted to LRR server, otherwise False with corresponding error.
+    Returns
+    -------
+    (bool, str)
+        True if the Archive is valid for upload, otherwise False with the reason for why it cannot be uploaded.
     """
     if not os.path.exists(archive_file_path):
         return False, "file does not exist"
@@ -36,9 +45,30 @@ def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
             return True, "success"
     return False, "failed the MIME test" # file MIME type not supported by LANraragi.
 
-def test_connection(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
+def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> requests.Response:
     """
     Test connection to LANraragi server.
+
+    Parameters
+    ----------
+    lrr_host : str
+        URL of the LANraragi host
+    lrr_api_key : str, optional
+        API key for LANraragi server. Defaults to no key.
+    max_retries : int, optional
+        Max number of retries before client gives up; defaults to 3. If `max_retries` is set to -1, it will retry forever.
+
+    Returns
+    -------
+    Response
+        Returns the following status codes.
+        - 200 success
+        
+    Raises
+    ------
+    ConnectionError
+        Cannot reach LANraragi server, SSL certificate invalid, or general connection error.
+    Timeout
     """
     retry_count = 0
     url = f"{lrr_host}/api/info"
@@ -77,6 +107,28 @@ def test_connection(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
 def get_archive_ids(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> Set[str]:
     """
     Get all archive IDs as a set.
+
+    Parameters
+    ----------
+    lrr_host : str
+        Absolute URL of the LANraragi host (e.g. `http://localhost:3000` or `https://lanraragi`).
+    lrr_api_key : str, optional
+        API key for LANraragi server. Defaults to no key.
+    max_retries : int, optional
+        Max number of retries before client gives up; defaults to 3. If `max_retries` is set to -1, it will try forever.
+
+    Returns
+    -------
+    Set[str]
+        A set of Archive IDs.
+
+    Raises
+    ------
+    HTTPError
+        An unhandled status code has occurred.
+    ConnectionError
+        Cannot connect to server
+    Timeout
     """
     retry_count = 0
     url = f"{lrr_host}/api/archives"
@@ -99,7 +151,7 @@ def get_archive_ids(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) ->
                     archive_ids.add(obj['arcid'])
                 return archive_ids
             else:
-                requests.HTTPError(f"Unhandled status code {status_code}: {response.text}")
+                raise requests.HTTPError(f"Unhandled status code {status_code}: {response.text}")
 
         except requests.ConnectionError as conn_err:
             if max_retries < 0 or retry_count < max_retries:
@@ -276,6 +328,13 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
         upload_requests: List[ArchiveUploadRequest], archive_id_set: Set[str],
         use_multiprocessing: bool=False,
 ) -> List[ArchiveUploadRequest]:
+    """
+    Filter the upload requests by requests whose Archive IDs do not exist in the server, and returns this filtered list.
+    """
+    # trivial case: if the server has no archives, then there are no duplicates.
+    if not archive_id_set:
+        return upload_requests
+
     nonduplicate_upload_requests = list()
     if use_multiprocessing:
         with multiprocessing.Pool() as pool:
@@ -295,18 +354,53 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
     logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
     return nonduplicate_upload_requests
 
-def upload_archives_to_server(
+def upload_multiple_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False, 
-        use_multiprocessing: bool=False, use_threading: bool=False,
-):
+        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=None,
+) -> MultiArchiveUploadResponse:
     """
-    Execute multiple archive uploads to LANraragi.
+    Upload multiple Archives to the LANraragi server.
+
+    Parameters
+    ----------
+    upload_requests : List[ArchiveUploadRequest]
+        A list of requests representing Archives to upload.
+    lrr_host : str
+        Absolute URL of the LANraragi host (e.g. `http://localhost:3000` or `https://lanraragi`).
+    lrr_api_key : str, optional
+        API key for LANraragi server. Defaults to no key.
+    remove_duplicates : bool, optional
+        Remove duplicates from requests before the upload stage.
+    use_multiprocessing : bool, False
+        Allow use of multiprocessing (e.g. for LRR ID computation and deduplication)
+    use_threading : bool, False
+        Allow use of multithreading for uploads
+    max_upload_workers : int, optional
+        Max number of threads to perform uploads. Defaults to 1 worker.
+
+    Returns
+    -------
+    MultiArchiveUploadResponse
+
+    Raises
+    ------
+    ConnectionError
+        Cannot reach LANraragi server.
     """
+    if not max_upload_workers:
+        max_upload_workers = 1
+
     fn_call_start = time.time()
+    response = MultiArchiveUploadResponse()
+
+    if not upload_requests:
+        logger.warning("Nothing to upload.")
+        response.uploaded_files = 0
+        return response
 
     # connection must be available.
     logger.info("Testing connection to LANraragi server...")
-    is_connected = test_connection(lrr_host, lrr_api_key=lrr_api_key).status_code == 200
+    is_connected = run_lrr_connection_test(lrr_host, lrr_api_key=lrr_api_key).status_code == 200
     if not is_connected:
         raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
     logger.info("Successfully connected.")
@@ -324,33 +418,44 @@ def upload_archives_to_server(
             upload_requests, archive_id_set, use_multiprocessing=use_multiprocessing
         )
 
+        if not upload_requests:
+            logger.warning("Nothing to upload.")
+            response.uploaded_files = 0
+            return response
+
     logger.info("Starting upload job...")
     upload_counter = [0]
     if use_threading:
         lock = threading.Lock()
-        threads:List[threading.Thread] = list()
-        for upload_request in upload_requests:
-            thread = threading.Thread(
-                target=__handle_upload_job, 
-                args=(upload_request, lrr_host, lrr_api_key, upload_counter),
-                kwargs={'lock': lock}
-            )
-            threads.append(thread)
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        with ThreadPoolExecutor(max_workers=max_upload_workers) as executor:
+            futures: List[Future] = list()
+            for upload_request in upload_requests:
+                future = executor.submit(
+                    __handle_upload_job,
+                    upload_request,
+                    lrr_host,
+                    lrr_api_key,
+                    upload_counter,
+                    lock=lock
+                )
+                futures.append(future)
+            for future in futures:
+                future.result()
     else:
         for upload_request in upload_requests:
             __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
 
     fn_call_time = time.time() - fn_call_start
-    logger.info(f"Uploaded {upload_counter} new archives; elapsed time: {fn_call_time}s.")
-    return upload_counter[0]
+
+    upload_count = upload_counter[0]
+    logger.info(f"Uploaded {upload_count} new archives; elapsed time: {fn_call_time}s.")
+    response.uploaded_files = upload_count
+
+    return response
 
 def start_folder_upload_process(
         contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None
 ):
     """
     Upload archives found in a folder.
@@ -358,15 +463,15 @@ def start_folder_upload_process(
     logger.info("Building folder archive upload requests...")
     upload_requests = common.build_upload_requests(contents_directory)
     logger.info("Running upload job for folder...")
-    uploads = upload_archives_to_server(
+    uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers
     )
     return uploads
 
 def start_nhentai_archivist_upload_process(
         db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None
 ):
     """
     Upload archives downloaded by nhentai archivist.
@@ -377,8 +482,8 @@ def start_nhentai_archivist_upload_process(
     logger.info("Building nhentai archivist upload requests...")
     upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
     logger.info("Running upload job for nhentai archivist...")
-    uploads = upload_archives_to_server(
+    uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers
     )
     return uploads
