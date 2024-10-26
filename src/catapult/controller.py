@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
-from catapult.constants import ALLOWED_SIGNATURES
+from catapult.constants import ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
 from catapult.services import common, nhentai_archivist
@@ -56,7 +56,7 @@ def validate_archive_file(archive_file_path: str, check_for_corruption : bool=Tr
 
     if check_for_corruption:
         # archive integrity (only for zips for now).
-        for allowed_zip_signature in ["504b0304", "504b0506", "504b0708"]:
+        for allowed_zip_signature in ZIP_SIGNATURES:
             if signature.startswith(allowed_zip_signature):
                 if archive_contains_corrupted_image(Path(archive_file_path)):
                     return False, "contains corrupted image"

@@ -45,7 +45,7 @@ def __check(args):
 
 def __validate(args):
     file_path = args.filepath
-    is_check_corruption = args.check_corruption
+    is_check_corruption = not args.no_check_corruption
     print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
 
 def __upload(args):
@@ -147,7 +147,7 @@ def main():
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")
     validate_subparser.add_argument("filepath", help="Path to file to validate.")
-    validate_subparser.add_argument('--check-corruption', help='Check if an archive contains corrupted images.')
+    validate_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not check if a (zip) archive contains corrupted images.')
 
     # upload subparser
     upload_subparser = subparsers.add_parser("upload", help="Upload a file to the server.")
