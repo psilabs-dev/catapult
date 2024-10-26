@@ -45,7 +45,8 @@ def __check(args):
 
 def __validate(args):
     file_path = args.filepath
-    print(validate_archive_file(file_path))
+    is_check_corruption = not args.no_check_corruption
+    print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
 
 def __upload(args):
     file_path = args.filepath
@@ -53,6 +54,7 @@ def __upload(args):
     tags = args.tags
     summary = args.summary
     category_id = args.category_id
+    is_check_corruption = not args.no_check_corruption
 
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
@@ -64,7 +66,7 @@ def __upload(args):
         category_id=category_id
     )
 
-    file_is_valid, message = validate_archive_file(file_path)
+    file_is_valid, message = validate_archive_file(file_path, check_for_corruption=is_check_corruption)
     if not file_is_valid:
         print(f"File {file_path} is not valid. Reason: {message}.")
         return 1
@@ -146,6 +148,7 @@ def main():
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")
     validate_subparser.add_argument("filepath", help="Path to file to validate.")
+    validate_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not check if a (zip) archive contains corrupted images.')
 
     # upload subparser
     upload_subparser = subparsers.add_parser("upload", help="Upload a file to the server.")
@@ -156,6 +159,7 @@ def main():
     upload_subparser.add_argument('--category_id', type=int, help='Category ID of the archive.')
     upload_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
     upload_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
+    upload_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not check if a (zip) archive contains corrupted images.')
 
     # jobs subparser
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
