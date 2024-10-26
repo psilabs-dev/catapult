@@ -97,5 +97,5 @@ catapult upload /path/to/Archive --lrr-host http://localhost:3000 --lrr-api-key 
 
 Teardown instances when done:
 ```sh
-./integrations/teardown.sh
+./integration/teardown.sh
 ```
