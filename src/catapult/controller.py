@@ -14,11 +14,11 @@ from catapult.constants import ALLOWED_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
 from catapult.services import common, nhentai_archivist
-from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id
+from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
 
-def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
+def validate_archive_file(archive_file_path: str, check_for_corruption : bool=True) -> Tuple[bool, str]:
     """
     Validate an Archive for upload by checking file extension and MIME type.
     
@@ -26,6 +26,10 @@ def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
     ----------
     archive_file_path : str
         Path to an archive file.
+    check_for_coruption : bool
+        Check Archive for corruption in images contained.
+        If an image is corrupted, reject the archive.
+        This operation is time-expensive.
 
     Returns
     -------
@@ -41,10 +45,23 @@ def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
         return False, "unsupported extension" # extension not supported by LANraragi.
     with open(archive_file_path, 'rb') as fb:
         signature = fb.read(8).hex()
+
+    # mime check
+    is_allowed_mime = False
     for allowed_signature in ALLOWED_SIGNATURES:
         if signature.startswith(allowed_signature):
-            return True, "success"
-    return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+            is_allowed_mime = True
+    if not is_allowed_mime:
+        return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+
+    if check_for_corruption:
+        # archive integrity (only for zips for now).
+        for allowed_zip_signature in ["504b0304", "504b0506", "504b0708"]:
+            if signature.startswith(allowed_zip_signature):
+                if archive_contains_corrupted_image(Path(archive_file_path)):
+                    return False, "contains corrupted image"
+
+    return True, "success"
 
 def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> requests.Response:
     """
