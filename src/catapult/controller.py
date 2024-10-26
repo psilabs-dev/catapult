@@ -307,18 +307,21 @@ def __handle_upload_job(
         elif status_code == 415: # unsupported file
             logger.warning(f"Unsupported file: {upload_request.archive_file_name}.")
             return
-        elif status_code == 422: # checksum mismatch, try again.
+        elif status_code == 417: # checksum mismatch, try again.
             if checksum_retry_count < checksum_max_retries:
                 logger.warning(f"Checksum mismatch while handling {upload_request.archive_file_name}; trying again...")
                 checksum_retry_count += 1
                 continue
             else:
                 raise ConnectionError(f"Persistent checksum issues with {lrr_host} while uploading {archive_filename}.")
+        elif status_code == 422: # possible issue with file or filename.
+            logger.warning(f"Unprocessable entity {upload_request.archive_file_name}; see server logs.")
+            return
         elif status_code == 423: # locked
             logger.warning(f"File resource locked (file {upload_request.archive_file_name} is probably already being uploaded by another process).")
             return
         elif status_code == 500: # server error
-            raise requests.HTTPError(f"A server error has occurred! {response.text}")
+            raise requests.HTTPError(f"A server error has occurred while uploading {upload_request.archive_file_name}! {response.text}")
         else:
             raise requests.HTTPError(f"status code {status_code}; error {response.text}")
 
