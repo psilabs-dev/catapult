@@ -209,6 +209,7 @@ def upload_archive_to_server(
         - 409 duplicate archive
         - 415 unsupported file
         - 422 checksum mismatch
+        - 423 locked
         - 500 internal server error
     
     Raises
@@ -313,6 +314,9 @@ def __handle_upload_job(
                 continue
             else:
                 raise ConnectionError(f"Persistent checksum issues with {lrr_host} while uploading {archive_filename}.")
+        elif status_code == 423: # locked
+            logger.warning(f"File resource locked (file {upload_request.archive_file_name} is probably already being uploaded by another process).")
+            return
         elif status_code == 500: # server error
             raise requests.HTTPError(f"A server error has occurred! {response.text}")
         else:
