@@ -102,6 +102,7 @@ def __multi_upload(args):
     use_multiprocessing = args.multiprocessing
     upload_workers = args.upload_workers
     use_cache = not args.no_cache
+    check_for_corruption = not args.no_check_corruption
 
     if plugin_command == 'from-folder':
         contents_directory = args.folder
@@ -109,8 +110,11 @@ def __multi_upload(args):
         if not contents_directory:
             contents_directory = config.multi_upload_folder_dir
 
+        assert contents_directory, "no contents directory"
+
         start_folder_upload_process(
-            contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+            contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
+            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
     elif plugin_command == 'from-nhentai-archivist':
@@ -122,8 +126,12 @@ def __multi_upload(args):
         if not contents_directory:
             contents_directory = config.multi_upload_nhentai_archivist_content_dir
 
+        assert db, "no db"
+        assert contents_directory, "no contents directory"
+
         start_nhentai_archivist_upload_process(
-            db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+            db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
+            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
 
@@ -178,6 +186,7 @@ def main():
         plugin_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
         plugin_parser.add_argument('--upload-workers', type=int, default=1, help='Number of upload workers in a multithreaded job (default 1).')
         plugin_parser.add_argument('--no-cache', action='store_true', help='Disable cache when remove duplicates.')
+        plugin_parser.add_argument('--no-check-corruption', action='store_true', help='Do not upload Archives that contain corrupted images.')
 
     args = parser.parse_args()
     command = args.command
