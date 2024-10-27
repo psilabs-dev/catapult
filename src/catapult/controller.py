@@ -60,6 +60,7 @@ def validate_archive_file(archive_file_path: str, check_for_corruption : bool=Tr
             if signature.startswith(allowed_zip_signature):
                 if archive_contains_corrupted_image(Path(archive_file_path)):
                     return False, "contains corrupted image"
+                break
 
     return True, "success"
 
