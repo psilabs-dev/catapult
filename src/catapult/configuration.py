@@ -35,8 +35,15 @@ class Configuration:
         if self.CATAPULT_CONFIG_FILE.exists():
             with open(self.CATAPULT_CONFIG_FILE, 'r') as reader:
                 curr_configuration = toml.load(reader)
-                self.lrr_host = curr_configuration['default']['lrr_host']
-                self.lrr_api_key = curr_configuration['default']['lrr_api_key']
+
+                try:
+                    self.lrr_host = curr_configuration['default']['lrr_host']
+                except KeyError:
+                    self.lrr_host = ""
+                try:
+                    self.lrr_api_key = curr_configuration['default']['lrr_api_key']
+                except KeyError:
+                    self.lrr_api_key = ""
 
         # load environment variable configuration.
         self.lrr_host = os.getenv('LRR_HOST', self.lrr_host)
