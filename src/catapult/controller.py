@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
-from catapult.constants import ALLOWED_SIGNATURES, ZIP_SIGNATURES
+from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
 from catapult.services import common, nhentai_archivist
@@ -41,7 +41,7 @@ def validate_archive_file(archive_file_path: str, check_for_corruption : bool=Tr
     ext = os.path.splitext(archive_file_path)[1]
     if not ext:
         return False, "cannot have no extension" # cannot have no extension.
-    if ext[1:] not in {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}:
+    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
         return False, "unsupported extension" # extension not supported by LANraragi.
     with open(archive_file_path, 'rb') as fb:
         signature = fb.read(8).hex()

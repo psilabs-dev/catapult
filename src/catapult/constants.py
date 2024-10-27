@@ -1,5 +1,7 @@
 from pathlib import Path
 
+ALLOWED_LRR_EXTENSIONS = {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}
+
 ZIP_SIGNATURES = [
     # zip, cbz
     "50 4b 03 04",
