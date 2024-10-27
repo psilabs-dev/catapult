@@ -10,10 +10,11 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
+from catapult.connections import common
 from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
-from catapult.services import common, nhentai_archivist
+from catapult.connections import nhentai_archivist
 from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
