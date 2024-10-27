@@ -49,12 +49,12 @@ catapult validate tests/resources/fake.cbz
 
 Upload all Archives from a folder.
 ```sh
-catapult multi-upload from-folder /path/to/archives
+catapult multi-upload from-folder --folder /path/to/archives
 # starts uploading all archives found in /path/to/archives...
 ```
 Upload all Archives from an nhentai_archivist instance.
 ```sh
-catapult multi-upload from-nhentai-archivist /path/to/db /path/to/downloads
+catapult multi-upload from-nhentai-archivist --db /path/to/db --folder /path/to/downloads
 # starts uploading downloaded archives found in /path/to/downloads with metadata from /path/to/db...
 ```
 `catapult` supports multithreading for uploads and multiprocessing for compute-intensive hash checks.
