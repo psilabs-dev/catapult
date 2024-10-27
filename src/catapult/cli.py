@@ -159,7 +159,7 @@ def main():
     upload_subparser.add_argument('--category_id', type=int, help='Category ID of the archive.')
     upload_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
     upload_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
-    upload_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not check if a (zip) archive contains corrupted images.')
+    upload_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not upload if the archive contains corrupted images.')
 
     # jobs subparser
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
