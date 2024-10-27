@@ -45,7 +45,8 @@ def __check(args):
 
 def __validate(args):
     file_path = args.filepath
-    print(validate_archive_file(file_path))
+    is_check_corruption = not args.no_check_corruption
+    print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
 
 def __upload(args):
     file_path = args.filepath
@@ -53,6 +54,7 @@ def __upload(args):
     tags = args.tags
     summary = args.summary
     category_id = args.category_id
+    is_check_corruption = not args.no_check_corruption
 
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
@@ -64,7 +66,7 @@ def __upload(args):
         category_id=category_id
     )
 
-    file_is_valid, message = validate_archive_file(file_path)
+    file_is_valid, message = validate_archive_file(file_path, check_for_corruption=is_check_corruption)
     if not file_is_valid:
         print(f"File {file_path} is not valid. Reason: {message}.")
         return 1
@@ -100,6 +102,7 @@ def __multi_upload(args):
     use_multiprocessing = args.multiprocessing
     upload_workers = args.upload_workers
     use_cache = not args.no_cache
+    check_for_corruption = not args.no_check_corruption
 
     if plugin_command == 'from-folder':
         contents_directory = args.folder
@@ -107,8 +110,11 @@ def __multi_upload(args):
         if not contents_directory:
             contents_directory = config.multi_upload_folder_dir
 
+        assert contents_directory, "no contents directory"
+
         start_folder_upload_process(
-            contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+            contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
+            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
     elif plugin_command == 'from-nhentai-archivist':
@@ -120,8 +126,12 @@ def __multi_upload(args):
         if not contents_directory:
             contents_directory = config.multi_upload_nhentai_archivist_content_dir
 
+        assert db, "no db"
+        assert contents_directory, "no contents directory"
+
         start_nhentai_archivist_upload_process(
-            db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+            db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
+            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
 
@@ -146,6 +156,7 @@ def main():
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")
     validate_subparser.add_argument("filepath", help="Path to file to validate.")
+    validate_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not check if a (zip) archive contains corrupted images.')
 
     # upload subparser
     upload_subparser = subparsers.add_parser("upload", help="Upload a file to the server.")
@@ -156,6 +167,7 @@ def main():
     upload_subparser.add_argument('--category_id', type=int, help='Category ID of the archive.')
     upload_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
     upload_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
+    upload_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not upload if the archive contains corrupted images.')
 
     # jobs subparser
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
@@ -174,6 +186,7 @@ def main():
         plugin_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
         plugin_parser.add_argument('--upload-workers', type=int, default=1, help='Number of upload workers in a multithreaded job (default 1).')
         plugin_parser.add_argument('--no-cache', action='store_true', help='Disable cache when remove duplicates.')
+        plugin_parser.add_argument('--no-check-corruption', action='store_true', help='Do not upload Archives that contain corrupted images.')
 
     args = parser.parse_args()
     command = args.command

@@ -10,15 +10,15 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
-from catapult.constants import ALLOWED_SIGNATURES
+from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
 from catapult.services import common, nhentai_archivist
-from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id
+from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
 
-def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
+def validate_archive_file(archive_file_path: str, check_for_corruption : bool=True) -> Tuple[bool, str]:
     """
     Validate an Archive for upload by checking file extension and MIME type.
     
@@ -26,6 +26,10 @@ def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
     ----------
     archive_file_path : str
         Path to an archive file.
+    check_for_coruption : bool
+        Check Archive for corruption in images contained.
+        If an image is corrupted, reject the archive.
+        This operation is time-expensive.
 
     Returns
     -------
@@ -37,14 +41,28 @@ def validate_archive_file(archive_file_path: str) -> Tuple[bool, str]:
     ext = os.path.splitext(archive_file_path)[1]
     if not ext:
         return False, "cannot have no extension" # cannot have no extension.
-    if ext[1:] not in {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}:
+    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
         return False, "unsupported extension" # extension not supported by LANraragi.
     with open(archive_file_path, 'rb') as fb:
         signature = fb.read(8).hex()
+
+    # mime check
+    is_allowed_mime = False
     for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.startswith(allowed_signature):
-            return True, "success"
-    return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+        if signature.startswith(allowed_signature.lower().replace(' ', '')):
+            is_allowed_mime = True
+    if not is_allowed_mime:
+        return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+
+    if check_for_corruption:
+        # archive integrity (only for zips for now).
+        for allowed_zip_signature in ZIP_SIGNATURES:
+            if signature.startswith(allowed_zip_signature.lower().replace(' ', '')):
+                if archive_contains_corrupted_image(Path(archive_file_path)):
+                    return False, "contains corrupted image"
+                break
+
+    return True, "success"
 
 def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> requests.Response:
     """
@@ -366,8 +384,28 @@ def __find_nonduplicate_upload_requests_from_all_upload_requests(
     logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
     return nonduplicate_upload_requests
 
+def __find_uncorrupted_upload_requests_from_all_upload_requests(
+        upload_requests: List[ArchiveUploadRequest], use_multiprocessing: bool=False
+) -> List[ArchiveUploadRequest]:
+    """
+    Return a filtered list that removes Archives containing corrupted images.
+    """
+    uncorrupted_upload_requests = list()
+    if use_multiprocessing:
+        with multiprocessing.Pool() as pool:
+            results = pool.starmap(archive_contains_corrupted_image, [(upload_request.archive_file_path,) for upload_request in upload_requests])
+            uncorrupted_upload_requests = list(map(lambda s: upload_requests[s[0]], filter(lambda t: not t[1], enumerate(results))))
+    else:
+        for upload_request in upload_requests:
+            if not archive_contains_corrupted_image(upload_request.archive_file_path):
+                uncorrupted_upload_requests.append(upload_request)
+    num_corrupted_archives = len(upload_requests) - len(uncorrupted_upload_requests)
+    logger.info(f"Removed {num_corrupted_archives} corrupted archives from being uploaded.")
+    return uncorrupted_upload_requests
+
 def upload_multiple_archives_to_server(
-        upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False, 
+        upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, 
+        remove_duplicates: bool=False, check_for_corruption: bool=False,
         use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=None, use_cache: bool=True
 ) -> MultiArchiveUploadResponse:
     """
@@ -383,6 +421,9 @@ def upload_multiple_archives_to_server(
         API key for LANraragi server. Defaults to no key.
     remove_duplicates : bool, optional
         Remove duplicates from requests before the upload stage.
+    check_for_corruption : bool, False
+        Check and remove Archives that contain corrupted images from being uploaded.
+        This is an expensive process, as each Archive will be unzipped and inspected.
     use_multiprocessing : bool, False
         Allow use of multiprocessing (e.g. for LRR ID computation and deduplication)
     use_threading : bool, False
@@ -436,6 +477,18 @@ def upload_multiple_archives_to_server(
             logger.warning("Nothing to upload.")
             response.uploaded_files = 0
             return response
+    
+    # check if images contain corruption (can be very slow)
+    if check_for_corruption:
+        logger.info("Checking archives for corruption...")
+        upload_requests = __find_uncorrupted_upload_requests_from_all_upload_requests(
+            upload_requests, use_multiprocessing=use_multiprocessing
+        )
+
+        if not upload_requests:
+            logger.warning("Nothing to upload.")
+            response.uploaded_files = 0
+            return response
 
     logger.info("Starting upload job...")
     upload_counter = [0]
@@ -468,7 +521,8 @@ def upload_multiple_archives_to_server(
     return response
 
 def start_folder_upload_process(
-        contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
+        contents_directory: str, lrr_host: str, lrr_api_key: str=None, 
+        remove_duplicates: bool=False, check_for_corruption: bool=False,
         use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
 ):
     """
@@ -478,14 +532,16 @@ def start_folder_upload_process(
     upload_requests = common.build_upload_requests(contents_directory)
     logger.info("Running upload job for folder...")
     uploads = upload_multiple_archives_to_server(
-        upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key, 
+        remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
         use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
         use_cache=use_cache
     )
     return uploads
 
 def start_nhentai_archivist_upload_process(
-        db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, remove_duplicates: bool=False,
+        db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, 
+        remove_duplicates: bool=False, check_for_corruption: bool=False,
         use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
 ):
     """
@@ -498,7 +554,8 @@ def start_nhentai_archivist_upload_process(
     upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
     logger.info("Running upload job for nhentai archivist...")
     uploads = upload_multiple_archives_to_server(
-        upload_requests, lrr_host, lrr_api_key=lrr_api_key, remove_duplicates=remove_duplicates,
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key, 
+        remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
         use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
         use_cache=use_cache
     )
