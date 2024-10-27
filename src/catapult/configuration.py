@@ -29,6 +29,8 @@ class Configuration:
         """
         Initialize configuration singleton.
         """
+        self.CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
+
         # load default file configuration.
         if self.CATAPULT_CONFIG_FILE.exists():
             with open(self.CATAPULT_CONFIG_FILE, 'r') as reader:
@@ -49,7 +51,6 @@ class Configuration:
         """
         Save configuration to file.
         """
-        self.CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
         configuration = OrderedDict([
             ('default', OrderedDict([
                 ('lrr_host', self.lrr_host),
