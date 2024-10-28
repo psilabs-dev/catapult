@@ -57,7 +57,7 @@ def process_upload_task():
     # check if multi-upload can be used.
     logger.info("Checking for folder-based multi-upload availability...")
     if mu_folder is not None:
-        if Path(mu_folder).exists:
+        if Path(mu_folder).exists():
             logger.info("Folder-based multi-upload is available; running...")
             start_folder_upload_process(
                 mu_folder, lrr_host, lrr_api_key, remove_duplicates=True, check_for_corruption=False,
@@ -69,7 +69,7 @@ def process_upload_task():
     
     # check if nh-archivist can be used.
     if mu_nhentai_archivist_contents and mu_nhentai_archivist_db:
-        if Path(mu_nhentai_archivist_contents).exists and Path(mu_nhentai_archivist_db).exists:
+        if Path(mu_nhentai_archivist_contents).exists() and Path(mu_nhentai_archivist_db).exists():
             logger.info("nhentai-archivist multi-upload is available; running...")
             start_nhentai_archivist_upload_process(
                 mu_nhentai_archivist_db, mu_nhentai_archivist_contents,
