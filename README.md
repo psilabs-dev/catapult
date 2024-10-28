@@ -49,15 +49,27 @@ catapult validate tests/resources/fake.cbz
 
 Upload all Archives from a folder.
 ```sh
-catapult multi-upload from-folder /path/to/archives
+catapult multi-upload from-folder --folder /path/to/archives
 # starts uploading all archives found in /path/to/archives...
 ```
 Upload all Archives from an nhentai_archivist instance.
 ```sh
-catapult multi-upload from-nhentai-archivist /path/to/db /path/to/downloads
+catapult multi-upload from-nhentai-archivist --db /path/to/db --folder /path/to/downloads
 # starts uploading downloaded archives found in /path/to/downloads with metadata from /path/to/db...
 ```
 `catapult` supports multithreading for uploads and multiprocessing for compute-intensive hash checks.
+
+## Worker Mode
+"Worker mode" involves running `catapult` in the background as a Celery worker consuming requests from RabbitMQ. In order to run worker mode, a RabbitMQ instance is required.
+
+Install worker mode with its dependencies:
+```sh
+pip install ".[worker]"
+```
+Run the worker.
+```sh
+celery -A catapult.tasks worker --loglevel=INFO
+```
 
 ## Configuration
 There are several ways to configure `catapult`,
@@ -74,6 +86,9 @@ Application-specific environment variables:
 
 - `LRR_HOST`: absolute URL to the LANraragi server.
 - `LRR_API_KEY`: API key for the LANraragi server.
+
+Worker-specific environment variables:
+- `CELERY_BROKER_URL`: e.g. `amqp://localhost:5672`
 
 Multi-upload from folder:
 - `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.

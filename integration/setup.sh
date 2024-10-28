@@ -1,6 +1,6 @@
 #!/bin/bash
 
-docker compose -f integration/docker-compose.yml up -d
+docker compose -f integration/docker-compose.yml --profile server up -d
 docker exec -it redis bash -c "redis-cli <<EOF
 SELECT 2
 HSET LRR_CONFIG apikey lanraragi

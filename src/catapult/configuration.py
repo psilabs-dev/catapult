@@ -18,6 +18,9 @@ class Configuration:
     lrr_host: str = None
     lrr_api_key: str = None
 
+    # worker-specific config
+    celery_broker_url: str = None
+
     # upload folder-specific config
     multi_upload_folder_dir: str = None
 
@@ -29,17 +32,27 @@ class Configuration:
         """
         Initialize configuration singleton.
         """
+        self.CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
+
         # load default file configuration.
         if self.CATAPULT_CONFIG_FILE.exists():
             with open(self.CATAPULT_CONFIG_FILE, 'r') as reader:
                 curr_configuration = toml.load(reader)
-                self.lrr_host = curr_configuration['default']['lrr_host']
-                self.lrr_api_key = curr_configuration['default']['lrr_api_key']
+
+                try:
+                    self.lrr_host = curr_configuration['default']['lrr_host']
+                except KeyError:
+                    self.lrr_host = ""
+                try:
+                    self.lrr_api_key = curr_configuration['default']['lrr_api_key']
+                except KeyError:
+                    self.lrr_api_key = ""
 
         # load environment variable configuration.
         self.lrr_host = os.getenv('LRR_HOST', self.lrr_host)
         self.lrr_api_key = os.getenv('LRR_API_KEY', self.lrr_api_key)
-    
+        self.celery_broker_url = os.getenv('CELERY_BROKER_URL', self.celery_broker_url)
+
         self.multi_upload_folder_dir = os.getenv('MULTI_UPLOAD_FOLDER', self.multi_upload_folder_dir)
 
         self.multi_upload_nhentai_archivist_db = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_DB', self.multi_upload_nhentai_archivist_db)
@@ -49,7 +62,6 @@ class Configuration:
         """
         Save configuration to file.
         """
-        self.CATAPULT_HOME.mkdir(parents=True, exist_ok=True)
         configuration = OrderedDict([
             ('default', OrderedDict([
                 ('lrr_host', self.lrr_host),

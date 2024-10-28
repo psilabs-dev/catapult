@@ -10,10 +10,11 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
+from catapult.connections import common
 from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
-from catapult.services import common, nhentai_archivist
+from catapult.connections import nhentai_archivist
 from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
@@ -295,53 +296,72 @@ def upload_archive_to_server(
 
 def __handle_upload_job(
         upload_request: ArchiveUploadRequest, lrr_host: str, lrr_api_key: str, upload_counter: List[int], 
-        lock: threading.Lock=None, checksum_max_retries: int=None
+        lock: threading.Lock=None, checksum_max_retries: int=None, max_retries: int=3,
 ):
     archive_filename = upload_request.archive_file_name
     logger.debug(f"Uploading {archive_filename}...")
     checksum_retry_count = 0
     while True:
-        response = upload_archive_to_server(
-            upload_request.archive_file_path,
-            upload_request.metadata,
-            lrr_host,
-            archive_file_name=upload_request.archive_file_name,
-            lrr_api_key=lrr_api_key
-        )
-        status_code = response.status_code
-        if status_code == 200:
-            logger.info(f"Successfully uploaded {archive_filename} to {lrr_host}.")
-            if lock:
-                with lock:
+        try:
+            response = upload_archive_to_server(
+                upload_request.archive_file_path,
+                upload_request.metadata,
+                lrr_host,
+                archive_file_name=upload_request.archive_file_name,
+                lrr_api_key=lrr_api_key
+            )
+            status_code = response.status_code
+            if status_code == 200:
+                logger.info(f"Successfully uploaded {archive_filename} to {lrr_host}.")
+                if lock:
+                    with lock:
+                        upload_counter[0] += 1
+                else:
                     upload_counter[0] += 1
+                return
+            elif status_code == 401:
+                raise ConnectionError(f"Invalid credentials while authenticating to LANraragi server {lrr_host}.")
+            elif status_code == 409: # duplicate archive
+                logger.warning(f"Duplicate archive: {upload_request.archive_file_name}.")
+                return
+            elif status_code == 415: # unsupported file
+                logger.warning(f"Unsupported file: {upload_request.archive_file_name}.")
+                return
+            elif status_code == 417: # checksum mismatch, try again.
+                if checksum_retry_count < checksum_max_retries:
+                    logger.warning(f"Checksum mismatch while handling {upload_request.archive_file_name}; trying again...")
+                    checksum_retry_count += 1
+                    continue
+                else:
+                    raise ConnectionError(f"Persistent checksum issues with {lrr_host} while uploading {archive_filename}.")
+            elif status_code == 422: # possible issue with file or filename.
+                logger.warning(f"Unprocessable entity {upload_request.archive_file_name}; see server logs.")
+                return
+            elif status_code == 423: # locked
+                logger.warning(f"File resource locked (file {upload_request.archive_file_name} is probably already being uploaded by another process).")
+                return
+            elif status_code == 500: # server error
+                raise requests.HTTPError(f"A server error has occurred while uploading {upload_request.archive_file_name}! {response.text}")
             else:
-                upload_counter[0] += 1
-            return
-        elif status_code == 401:
-            raise ConnectionError(f"Invalid credentials while authenticating to LANraragi server {lrr_host}.")
-        elif status_code == 409: # duplicate archive
-            logger.warning(f"Duplicate archive: {upload_request.archive_file_name}.")
-            return
-        elif status_code == 415: # unsupported file
-            logger.warning(f"Unsupported file: {upload_request.archive_file_name}.")
-            return
-        elif status_code == 417: # checksum mismatch, try again.
-            if checksum_retry_count < checksum_max_retries:
-                logger.warning(f"Checksum mismatch while handling {upload_request.archive_file_name}; trying again...")
-                checksum_retry_count += 1
+                raise requests.HTTPError(f"status code {status_code}; error {response.text}")
+        except requests.ConnectionError as conn_err:
+            if max_retries < 0 or retry_count < max_retries:
+                time_to_sleep = 2 ** retry_count
+                logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
+                time.sleep(time_to_sleep)
+                retry_count += 1
                 continue
             else:
-                raise ConnectionError(f"Persistent checksum issues with {lrr_host} while uploading {archive_filename}.")
-        elif status_code == 422: # possible issue with file or filename.
-            logger.warning(f"Unprocessable entity {upload_request.archive_file_name}; see server logs.")
-            return
-        elif status_code == 423: # locked
-            logger.warning(f"File resource locked (file {upload_request.archive_file_name} is probably already being uploaded by another process).")
-            return
-        elif status_code == 500: # server error
-            raise requests.HTTPError(f"A server error has occurred while uploading {upload_request.archive_file_name}! {response.text}")
-        else:
-            raise requests.HTTPError(f"status code {status_code}; error {response.text}")
+                raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
+        except requests.Timeout as timeout_err:
+            if max_retries < 0 or retry_count < max_retries:
+                time_to_sleep = 2 ** (retry_count + 5)
+                logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
+                time.sleep(time_to_sleep)
+                retry_count += 1
+                continue
+            else:
+                raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
 
 def __is_duplicate(upload_request: ArchiveUploadRequest, archive_id_set: Set[str], use_cache: bool) -> Tuple[bool, ArchiveUploadRequest]:
     """

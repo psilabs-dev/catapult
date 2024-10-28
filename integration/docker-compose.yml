@@ -8,6 +8,9 @@ services:
       - 127.0.0.1:6379:6379
     healthcheck:
       test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      start_period: 10s
+    profiles:
+      - server
 
   lanraragi:
     image: ghcr.io/psilabs-dev/lanraragi:dev-0.9.30-EXPERIMENTAL-psilabs-52aa679a7fd5349ca13c5b138f8214b54b9843be
@@ -20,3 +23,36 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    profiles:
+      - server
+
+  rabbitmq:
+    image: rabbitmq:4.0-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - 5672:5672
+      - 15672:15672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      start_period: 10s
+    profiles:
+      - worker
+  
+  catapult:
+    build: ..
+    container_name: catapult
+    restart: unless-stopped
+    command: ["celery", "-A", "catapult.tasks", "worker", "--loglevel=INFO"]
+    environment:
+      - CELERY_BROKER_URL=amqp://rabbitmq
+      - LRR_HOST=http://lanraragi:3000
+      - LRR_API_KEY=lanraragi
+    healthcheck:
+      test: ["CMD", "celery", "inspect", "ping"]
+      start_period: 10s
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    profiles:
+      - worker

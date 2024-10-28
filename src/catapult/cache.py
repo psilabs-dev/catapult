@@ -45,11 +45,15 @@ def get_cached_archive_id_else_compute(archive_path: str) -> str:
 
     if result:
         return result[0]
-    
-    # time to do compute.
+    else:
+        return create_archive_entry(archive_path, md5)
+
+def create_archive_entry(archive_path: str, md5: str):
+    """
+    Create an archive row in cache with corresponding md5.
+    """
     archive_id = lrr_compute_id(archive_path)
     filename = Path(archive_path).name
-
     with closing(sqlite3.connect(config.CATAPULT_CACHE_DB)) as conn:
         with closing(conn.cursor()) as c:
             c.execute('''INSERT OR IGNORE INTO archive_hash VALUES (?, ?)''', (md5, archive_id))
