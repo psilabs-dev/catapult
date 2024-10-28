@@ -48,6 +48,9 @@ services:
       - CELERY_BROKER_URL=amqp://rabbitmq
       - LRR_HOST=http://lanraragi:3000
       - LRR_API_KEY=lanraragi
+    healthcheck:
+      test: ["CMD", "celery", "inspect", "ping"]
+      start_period: 10s
     depends_on:
       rabbitmq:
         condition: service_healthy
