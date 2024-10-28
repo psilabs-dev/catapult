@@ -59,6 +59,18 @@ catapult multi-upload from-nhentai-archivist --db /path/to/db --folder /path/to/
 ```
 `catapult` supports multithreading for uploads and multiprocessing for compute-intensive hash checks.
 
+## Worker Mode
+"Worker mode" involves running `catapult` in the background as a Celery worker consuming requests from RabbitMQ. In order to run worker mode, a RabbitMQ instance is required.
+
+Install worker mode with its dependencies:
+```sh
+pip install ".[worker]"
+```
+Run the worker.
+```sh
+celery -A catapult.tasks worker --loglevel=INFO
+```
+
 ## Configuration
 There are several ways to configure `catapult`,
 
