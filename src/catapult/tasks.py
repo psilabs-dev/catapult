@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import worker_init
 import logging
 from pathlib import Path
 
@@ -7,6 +8,17 @@ from catapult.controller import run_lrr_connection_test, start_folder_upload_pro
 
 logger = logging.getLogger(__name__)
 worker = Celery(broker=config.celery_broker_url)
+
+@worker_init.connect
+def on_worker_init(*args, **kwargs):
+    logger.info("Starting up catapult worker; attempting to connect to LANraragi...")
+    response = run_lrr_connection_test(config.lrr_host, config.lrr_api_key, max_retries=-1)
+    if response.status_code == 200:
+        logger.info("Connected to LANraragi!")
+        return
+    else:
+        logger.error("Cannot connect to server!")
+        return
 
 @worker.task
 def process_upload_task():
