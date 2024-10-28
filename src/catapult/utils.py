@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import logging
+import multiprocessing
 import numpy as np
 import os
 from pathlib import Path
@@ -65,6 +66,23 @@ def archive_contains_corrupted_image(archive_path: Path) -> bool:
                     if image_is_corrupted(image):
                         return True
     return False
+
+def find_corrupted_archives_from_file_paths(archive_paths: List[str], use_multiprocessing: bool=True) -> List[str]:
+    """
+    Find all broken/corrupted archives from a given list of file paths and return them.
+    """
+    if not archive_paths:
+        return list()
+    
+    if use_multiprocessing:
+        with multiprocessing.Pool() as pool:
+            results = pool.starmap(archive_contains_corrupted_image, [(archive_path,) for archive_path in archive_paths])
+            corrupted_archives = list(map(lambda s: archive_paths[s[0]], filter(lambda t: t[1], enumerate(results))))
+    else:
+        for archive_path in archive_paths:
+            if archive_contains_corrupted_image(Path(archive_path)):
+                corrupted_archives.append(archive_path)
+    return corrupted_archives
 
 def mask_string(s) -> str:
     if len(s) <= 2:
