@@ -10,11 +10,10 @@ import threading
 import time
 from typing import Dict, List, Set, Tuple
 
-from catapult.connections import common
+from catapult.connections import common, nhentai_archivist, pixivutil2
 from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
-from catapult.connections import nhentai_archivist
 from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
@@ -573,6 +572,27 @@ def start_nhentai_archivist_upload_process(
     logger.info("Building nhentai archivist upload requests...")
     upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
     logger.info("Running upload job for nhentai archivist...")
+    uploads = upload_multiple_archives_to_server(
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key, 
+        remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
+        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
+        use_cache=use_cache
+    )
+    return uploads
+
+def start_pixivutil2_upload_process(
+        db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, 
+        remove_duplicates: bool=False, check_for_corruption: bool=False,
+        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
+):
+    """
+    Upload archives downloaded by PixivUtil2.
+    """
+    if not pixivutil2.is_available(db, contents_directory):
+        logger.error("PixivUtil2 is not available.")
+        return
+    logger.info("Building PixivUtil2 upload requests...")
+    upload_requests = pixivutil2.build_upload_requests(db, contents_directory)
     uploads = upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, 
         remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,

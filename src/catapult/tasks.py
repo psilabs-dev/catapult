@@ -4,7 +4,9 @@ import logging
 from pathlib import Path
 
 from catapult.configuration import config
-from catapult.controller import run_lrr_connection_test, start_folder_upload_process, start_nhentai_archivist_upload_process
+from catapult.controller import (
+    run_lrr_connection_test, start_folder_upload_process, start_nhentai_archivist_upload_process, start_pixivutil2_upload_process
+)
 
 logger = logging.getLogger(__name__)
 worker = Celery(broker=config.celery_broker_url)
@@ -42,6 +44,10 @@ def process_upload_task():
     mu_nhentai_archivist_db = config.multi_upload_nhentai_archivist_db
     mu_nhentai_archivist_contents = config.multi_upload_nhentai_archivist_content_dir
 
+    # get pixivutil2 configuration
+    mu_pixivutil2_db = config.multi_upload_pixivutil_db
+    mu_pixivutil2_contents = config.multi_upload_pixivutil_content_dir
+
     # run connection test.
     response = run_lrr_connection_test(lrr_host, lrr_api_key)
     if not response.status_code == 200:
@@ -74,4 +80,16 @@ def process_upload_task():
         else:
             logger.error(f"Cannot upload archives from nhentai-archivist; file does not exist!")
     
+    if mu_pixivutil2_db and mu_pixivutil2_contents:
+        if Path(mu_pixivutil2_db).exists() and Path(mu_pixivutil2_contents).exists():
+            logger.info("pixivutil2 is available; running...")
+            start_pixivutil2_upload_process(
+                mu_pixivutil2_db, mu_pixivutil2_contents,
+                lrr_host, lrr_api_key, remove_duplicates=True, check_for_corruption=False,
+                use_threading=True, use_multiprocessing=False, max_upload_workers=1,
+                use_cache=True
+            )
+        else:
+            logger.error(f"Cannot upload archives from pixivutil2; file does not exist!")
+
     return

@@ -28,6 +28,10 @@ class Configuration:
     multi_upload_nhentai_archivist_db: str = None
     multi_upload_nhentai_archivist_content_dir: str = None
 
+    # pixivutil-specific config
+    multi_upload_pixivutil_db: str = None
+    multi_upload_pixivutil_content_dir: str = None
+
     def __init__(self):
         """
         Initialize configuration singleton.
@@ -57,6 +61,9 @@ class Configuration:
 
         self.multi_upload_nhentai_archivist_db = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_DB', self.multi_upload_nhentai_archivist_db)
         self.multi_upload_nhentai_archivist_content_dir = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS', self.multi_upload_nhentai_archivist_content_dir)
+
+        self.multi_upload_pixivutil_db = os.getenv('MULTI_UPLOAD_PIXIVUTIL_DB', self.multi_upload_pixivutil_db)
+        self.multi_upload_pixivutil_content_dir = os.getenv('MULTI_UPLOAD_PIXIVUTIL_CONTENT_DIR', self.multi_upload_pixivutil_content_dir)
 
     def save(self):
         """
