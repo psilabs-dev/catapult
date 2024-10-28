@@ -87,6 +87,9 @@ Application-specific environment variables:
 - `LRR_HOST`: absolute URL to the LANraragi server.
 - `LRR_API_KEY`: API key for the LANraragi server.
 
+Worker-specific environment variables:
+- `CELERY_BROKER_URL`: e.g. `amqp://localhost:5672`
+
 Multi-upload from folder:
 - `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.
 
