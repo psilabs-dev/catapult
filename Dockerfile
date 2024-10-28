@@ -13,4 +13,4 @@ RUN python3 -m venv /opt/venv && pip3 install -r requirements.txt
 COPY src                    /workdir/src
 COPY pyproject.toml         /workdir/pyproject.toml
 
-RUN pip3 install .
+RUN pip3 install --no-cache .
