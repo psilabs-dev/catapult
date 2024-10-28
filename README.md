@@ -97,6 +97,10 @@ Multi-upload from Nhentai Archivist:
 - `MULTI_UPLOAD_NH_ARCHIVIST_DB`: path to the nhentai archivist database.
 - `MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS`: path to the nhentai archivist downloaded contents directory.
 
+Multi-upload from PixivUtil2:
+- `MULTI_UPLOAD_PIXIVUTIL_DB`: path to PixivUtil2 database.
+- `MULTI_UPLOAD_PIXIVUTIL_CONTENT_DIR`: path to the PixivUtil2 downloads directory.
+
 ## Development
 
 Run integration tests against a LANraragi docker instance. This setup script will create an LRR instance, inject it with an API key, and apply permissions.

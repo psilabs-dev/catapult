@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from .configuration import config
-from .controller import start_folder_upload_process, start_nhentai_archivist_upload_process, run_lrr_connection_test, upload_archive_to_server, validate_archive_file
+from .controller import start_folder_upload_process, start_nhentai_archivist_upload_process, start_pixivutil2_upload_process, run_lrr_connection_test, upload_archive_to_server, validate_archive_file
 from .models import ArchiveMetadata
 from .utils import get_version, mask_string
 
@@ -134,6 +134,23 @@ def __multi_upload(args):
             remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
             use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
         )
+    elif plugin_command == 'from-pixivutil2':
+        db = args.db
+        contents_directory = args.folder
+
+        if not db:
+            db = config.multi_upload_nhentai_archivist_db
+        if not contents_directory:
+            contents_directory = config.multi_upload_nhentai_archivist_content_dir
+
+        assert db, "no db"
+        assert contents_directory, "no contents directory"
+
+        start_pixivutil2_upload_process(
+            db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
+            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
+            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
+        )
 
 def main():
 
@@ -177,8 +194,11 @@ def main():
     mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
     mu_nh_parser.add_argument('--db', type=str, help='Path to nhentai archivist database.')
     mu_nh_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
+    mu_pu_parser = mu_subparsers.add_parser('from-pixivutil2', help="PixivUtil2 upload jobs.")
+    mu_pu_parser.add_argument('--db', type=str, help='Path to pixivutil2 archivist database.')
+    mu_pu_parser.add_argument('--folder', type=str, help='Path to pixivutil2 contents folder.')
 
-    for plugin_parser in [mu_folder_parser, mu_nh_parser]:
+    for plugin_parser in [mu_folder_parser, mu_nh_parser, mu_pu_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
         plugin_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
         plugin_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
