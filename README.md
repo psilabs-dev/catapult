@@ -24,11 +24,17 @@ Confirm that `catapult` can reach the server:
 catapult check
 # success; otherwise throws some error
 ```
-Upload an Archive to the LANraragi server:
+Upload an Archive file to the LANraragi server:
 ```sh
-catapult upload /path/to/Archive
-# Uploaded /path/to/Archive to server.
+catapult upload /path/to/Archive.zip
+# Uploaded /path/to/Archive.zip to server as Archive.zip.
 ```
+This extends to folders of images; `catapult` will create a zip file `ArchiveFolder.zip` and upload this to the server:
+```sh
+catapult upload /path/to/ArchiveFolder
+# Uploaded ArchiveFolder.zip to server
+```
+
 You can add metadata or change/override the LANraragi url/API key.
 ```sh
 catapult upload /path/to/Archive --title some-title --tags "key:value" --lrr-host http://lanraragi2

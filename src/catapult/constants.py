@@ -1,5 +1,7 @@
 from pathlib import Path
 
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "tiff"}
+
 ALLOWED_LRR_EXTENSIONS = {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}
 
 JPG_SIGNATURES = [
@@ -10,6 +12,13 @@ JPG_SIGNATURES = [
 
 PNG_SIGNATURES = [
     "89 50 4E 47 0D 0A 1A 0A",
+]
+
+TIFF_SIGNATURES = [
+    "49 49 2A 00",
+    "4D 4D 00 2A",
+    "49 49 2B 00",
+    "4D 4D 00 2B"
 ]
 
 ZIP_SIGNATURES = [
@@ -24,6 +33,8 @@ RAR_SIGNATURES = [
     "52 61 72 21 1A 07 00",
     "52 61 72 21 1A 07 01 00",
 ]
+
+ALLOWED_IMAGE_SIGNATURES = PNG_SIGNATURES + JPG_SIGNATURES + TIFF_SIGNATURES
 
 ALLOWED_SIGNATURES = ZIP_SIGNATURES + RAR_SIGNATURES + [
 

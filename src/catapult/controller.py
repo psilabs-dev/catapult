@@ -6,25 +6,29 @@ import multiprocessing.pool
 import os
 from pathlib import Path
 import requests
+import shutil
+import tempfile
 import threading
 import time
 from typing import Dict, List, Set, Tuple
 
 from catapult.connections import common, nhentai_archivist, pixivutil2
-from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
+from catapult.constants import ALLOWED_IMAGE_EXTENSIONS, ALLOWED_LRR_EXTENSIONS, ALLOWED_IMAGE_SIGNATURES, ALLOWED_SIGNATURES, ZIP_SIGNATURES
 from catapult.cache import get_cached_archive_id_else_compute
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
-from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
+from catapult.utils import calculate_sha1, find_all_archives, image_is_corrupted, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
 
-def validate_archive_file(archive_file_path: str, check_for_corruption : bool=True) -> Tuple[bool, str]:
+def validate_archive_file(archive_file: str, check_for_corruption : bool=True) -> Tuple[bool, str]:
     """
-    Validate an Archive for upload by checking file extension and MIME type.
+    Validate an Archive for upload.
+    If the Archive is a file, check file extension and MIME type.
+    If the Archive is a folder, inspect all contents and ensure they are all valid image types.
     
     Parameters
     ----------
-    archive_file_path : str
+    archive_file : str
         Path to an archive file.
     check_for_coruption : bool
         Check Archive for corruption in images contained.
@@ -36,32 +40,65 @@ def validate_archive_file(archive_file_path: str, check_for_corruption : bool=Tr
     (bool, str)
         True if the Archive is valid for upload, otherwise False with the reason for why it cannot be uploaded.
     """
-    if not os.path.exists(archive_file_path):
+    archive_file_path = Path(archive_file)
+
+    if not archive_file_path.exists():
         return False, "file does not exist"
-    ext = os.path.splitext(archive_file_path)[1]
-    if not ext:
-        return False, "cannot have no extension" # cannot have no extension.
-    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
-        return False, "unsupported extension" # extension not supported by LANraragi.
-    with open(archive_file_path, 'rb') as fb:
-        signature = fb.read(8).hex()
 
-    # mime check
-    is_allowed_mime = False
-    for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.startswith(allowed_signature.lower().replace(' ', '')):
-            is_allowed_mime = True
-    if not is_allowed_mime:
-        return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+    if archive_file_path.is_dir():
+        for item in archive_file_path.iterdir():
+            # check if item is image
+            if item.is_dir():
+                return False, "nested directories not allowed"
+            ext = item.suffix
+            if not ext:
+                return False, "item in archive folder cannot have no extension"
+            if ext[1:] not in ALLOWED_IMAGE_EXTENSIONS:
+                return False, f"unsupported item extension {ext[1:]}"
+            with open(item, 'rb') as ib:
+                signature = ib.read(16).hex()
+            
+            # mime check
+            item_has_allowed_mime = False
+            for allowed_signature in ALLOWED_IMAGE_SIGNATURES:
+                allowed_signature_formatted = allowed_signature.lower().replace(' ', '')
+                if signature.startswith(allowed_signature_formatted):
+                    item_has_allowed_mime = True
+                    break
+            if not item_has_allowed_mime:
+                return False, f"archive {item} contains item with invalid file signature {signature}"
+            
+            # check for corruption
+            if check_for_corruption:
+                if image_is_corrupted(item):
+                    return False, f"archive contains corrupted image {item}"
 
-    if check_for_corruption:
-        # archive integrity (only for zips for now).
-        for allowed_zip_signature in ZIP_SIGNATURES:
-            if signature.startswith(allowed_zip_signature.lower().replace(' ', '')):
-                if archive_contains_corrupted_image(Path(archive_file_path)):
-                    return False, "contains corrupted image"
-                break
+    elif archive_file_path.is_file():
+        ext = archive_file_path.suffix
+        if not ext:
+            return False, "cannot have no extension" # cannot have no extension.
+        if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
+            return False, "unsupported extension" # extension not supported by LANraragi.
+        with open(archive_file_path, 'rb') as fb:
+            signature = fb.read(8).hex()
 
+        # mime check
+        is_allowed_mime = False
+        for allowed_signature in ALLOWED_SIGNATURES:
+            if signature.startswith(allowed_signature.lower().replace(' ', '')):
+                is_allowed_mime = True
+        if not is_allowed_mime:
+            return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+
+        if check_for_corruption:
+            # archive integrity (only for zips for now).
+            for allowed_zip_signature in ZIP_SIGNATURES:
+                if signature.startswith(allowed_zip_signature.lower().replace(' ', '')):
+                    if archive_contains_corrupted_image(archive_file_path):
+                        return False, "contains corrupted image"
+                    break
+    else:
+        return False, "unknown file type (not file or directory)"
     return True, "success"
 
 def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> requests.Response:
@@ -192,7 +229,7 @@ def get_archive_ids(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) ->
                 raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
 
 def upload_archive_to_server(
-        archive_file_path: str,
+        archive_file: str,
         metadata: ArchiveMetadata,
         lrr_host: str,
         archive_file_name: str=None,
@@ -204,8 +241,9 @@ def upload_archive_to_server(
 
     Parameters
     ----------
-    archive_file_path : str
-        Full path to an archive file. File must exist and be a valid file type.
+    archive_file : str
+        Path to an Archive. The Archive may be a file of the valid file type, or it may be a folder containing only valid images.
+        No further validation will be performed on the Archive in this action.
     metadata : ArchiveMetadata
         Archive metadata.
     lrr_host : str
@@ -236,6 +274,30 @@ def upload_archive_to_server(
         Cannot reach LANraragi server, SSL certificate invalid, or a general connection error.
     requests.Timeout
     """
+
+    archive_file_path = Path(archive_file)    
+    if not archive_file_path.exists():
+        raise FileNotFoundError(f"{archive_file_path} does not exist!")
+    archive_file_path = archive_file_path.absolute()
+
+    # if the file path is a folder, convert it into a zip archive first.
+    if archive_file_path.is_dir():
+
+        if not archive_file_name:
+            archive_file_name = Path(archive_file_path).name + '.zip'
+
+        logger.info(f"{archive_file_path} is directory; attempting compression...")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            shutil.make_archive(
+                os.path.join(tmpdir, 'dump'), 'zip', root_dir=str(archive_file_path)
+            )
+            zip_file_path = os.path.join(tmpdir, 'dump.zip')
+            logger.info(f"Moved {archive_file_path} to zipfile {zip_file_path}")
+            response = upload_archive_to_server(
+                zip_file_path, metadata, lrr_host, archive_file_name=archive_file_name, 
+                lrr_api_key=lrr_api_key, max_retries=max_retries
+            )
+            return response
 
     if not archive_file_name:
         archive_file_name = Path(archive_file_path).name

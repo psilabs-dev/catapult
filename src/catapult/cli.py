@@ -50,6 +50,7 @@ def __validate(args):
 
 def __upload(args):
     file_path = args.filepath
+    filename = args.filename
     title = args.title
     tags = args.tags
     summary = args.summary
@@ -81,7 +82,7 @@ def __upload(args):
         print(f"File {file_path} does not exist!")
         return 1
 
-    response = upload_archive_to_server(file_path, metadata, lrr_host, lrr_api_key=lrr_api_key)
+    response = upload_archive_to_server(file_path, metadata, lrr_host, archive_file_name=filename, lrr_api_key=lrr_api_key)
     status_code = response.status_code
     if status_code == 200:
         print(f"Uploaded {file_path} to server.")
@@ -178,6 +179,7 @@ def main():
     # upload subparser
     upload_subparser = subparsers.add_parser("upload", help="Upload a file to the server.")
     upload_subparser.add_argument("filepath", help="Path to file to upload.")
+    upload_subparser.add_argument('--filename', type=str, help='Filename of Archive in server.')
     upload_subparser.add_argument('--title', type=str, help='Title of the archive.')
     upload_subparser.add_argument('--tags', type=str, help='Tags of the archive.')
     upload_subparser.add_argument('--summary', type=str, help='Summary of the archive.')
