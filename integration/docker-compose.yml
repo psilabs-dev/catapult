@@ -17,7 +17,7 @@ services:
     container_name: lanraragi
     restart: unless-stopped
     ports:
-      - 127.0.0.1:3000:3000
+      - 3000:3000
     environment:
       - "LRR_REDIS_ADDRESS=redis:6379"
     depends_on:
