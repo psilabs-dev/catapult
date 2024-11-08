@@ -13,11 +13,11 @@ services:
       - server
 
   lanraragi:
-    image: ghcr.io/psilabs-dev/lanraragi:dev-0.9.30-EXPERIMENTAL-psilabs-13f677f08807ed482e6a527cbdc76a466ce57bfc
+    image: ghcr.io/psilabs-dev/lanraragi:cr-dev-0.9.22-8caaf856385326b10209f0a0d51847c9650abdb8
     container_name: lanraragi
     restart: unless-stopped
     ports:
-      - 127.0.0.1:3000:3000
+      - 3000:3000
     environment:
       - "LRR_REDIS_ADDRESS=redis:6379"
     depends_on:
