@@ -301,6 +301,7 @@ def __handle_upload_job(
     archive_filename = upload_request.archive_file_name
     logger.debug(f"Uploading {archive_filename}...")
     checksum_retry_count = 0
+    retry_count = 0
     while True:
         try:
             response = upload_archive_to_server(
