@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker compose -f integration/docker-compose.yml --profile server down
+docker compose -f integration/docker-compose.yml --profile server down --volumes
