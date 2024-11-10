@@ -13,7 +13,7 @@ services:
       - server
 
   lanraragi:
-    image: ghcr.io/psilabs-dev/lanraragi:cr-dev-0.9.22-8caaf856385326b10209f0a0d51847c9650abdb8
+    image: ghcr.io/psilabs-dev/lanraragi:cr-dev-0.9.30-55ec1c19cc84cf0f56a2086f080f532777c6740c
     container_name: lanraragi
     restart: unless-stopped
     ports:
