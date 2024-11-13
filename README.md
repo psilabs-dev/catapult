@@ -1,6 +1,6 @@
 # Catapult
 
-A LANraragi file upload toolkit.
+An async LANraragi file upload toolkit.
 
 ## Quickstart
 Install from source:
@@ -40,9 +40,9 @@ catapult upload /path/to/Archive --title some-title --tags "key:value" --lrr-hos
 Validate whether a file is a valid, uploadable Archive:
 ```sh
 catapult validate Dockerfile
-# (False, 'cannot have no extension')
+# INVALID_EXTENSION - No file extension.
 catapult validate tests/resources/fake.cbz
-# (False, 'failed the MIME test')
+# INVALID_MIME_TYPE - Invalid signature: 5468697320697320
 ```
 
 ### Multi-Archive Uploads
@@ -51,24 +51,6 @@ Upload all Archives from a folder.
 ```sh
 catapult multi-upload from-folder --folder /path/to/archives
 # starts uploading all archives found in /path/to/archives...
-```
-Upload all Archives from an nhentai_archivist instance.
-```sh
-catapult multi-upload from-nhentai-archivist --db /path/to/db --folder /path/to/downloads
-# starts uploading downloaded archives found in /path/to/downloads with metadata from /path/to/db...
-```
-`catapult` supports multithreading for uploads and multiprocessing for compute-intensive hash checks.
-
-## Worker Mode
-"Worker mode" involves running `catapult` in the background as a Celery worker consuming requests from RabbitMQ. In order to run worker mode, a RabbitMQ instance is required.
-
-Install worker mode with its dependencies:
-```sh
-pip install ".[worker]"
-```
-Run the worker.
-```sh
-celery -A catapult.tasks worker --loglevel=INFO
 ```
 
 ## Configuration
@@ -87,15 +69,8 @@ Application-specific environment variables:
 - `LRR_HOST`: absolute URL to the LANraragi server.
 - `LRR_API_KEY`: API key for the LANraragi server.
 
-Worker-specific environment variables:
-- `CELERY_BROKER_URL`: e.g. `amqp://localhost:5672`
-
 Multi-upload from folder:
 - `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.
-
-Multi-upload from Nhentai Archivist:
-- `MULTI_UPLOAD_NH_ARCHIVIST_DB`: path to the nhentai archivist database.
-- `MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS`: path to the nhentai archivist downloaded contents directory.
 
 ## Development
 
