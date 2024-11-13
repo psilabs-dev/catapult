@@ -1,3 +1,5 @@
+import aiosqlite
+import asyncio
 from contextlib import closing
 import hashlib
 import logging
@@ -9,62 +11,50 @@ from catapult.utils import lrr_compute_id
 
 logger = logging.getLogger(__name__)
 
-def __calculate_md5_from_filepath(archive_path: str) -> str:
-    return hashlib.md5(archive_path.encode('utf-8')).hexdigest()
-
-def create_cache_table():
+async def create_cache_table():
     """
-    Create archive_hash table, which maps the archive to its corresponding LRR ID.
+    Create `archive_hash` table which stores the MD5 hashes of the filenames of all 
+    Archives that are uploaded to the Server.
     """
-    with closing(sqlite3.connect(config.CATAPULT_CACHE_DB)) as conn:
-        with closing(conn.cursor()) as c:
-            c.execute(
-                '''
+    async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as db:
+        await db.execute('''
         CREATE TABLE IF NOT EXISTS archive_hash (
-        md5 VARCHAR(255) PRIMARY KEY,
-        archive_id VARCHAR(255)
+        md5 VARCHAR(255) PRIMARY KEY
         )
-        '''
-            )
-        conn.commit()
+        ''')
+        await db.commit()
     return
 
-def get_cached_archive_id_else_compute(archive_path: str) -> str:
+async def archive_hash_exists(archive_md5: str) -> bool:
     """
-    Get archive ID from cache if it exists (quick), otherwise compute it (slow) and add it to cache.
+    Returns True if hash exists in cache, else False.
     """
-    md5 = __calculate_md5_from_filepath(archive_path)
-    with closing(sqlite3.connect(config.CATAPULT_CACHE_DB)) as conn:
-        with closing(conn.cursor()) as c:
-            c.execute(
-                '''
-        SELECT archive_id FROM archive_hash WHERE md5 = ?
-        ''', (md5, )
-            )
-            result = c.fetchone()
+    async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as db:
+        async with db.execute('SELECT * FROM archive_hash WHERE md5 = ?', (archive_md5,)) as cursor:
+            return await cursor.fetchone() is not None
 
-    if result:
-        return result[0]
-    else:
-        return create_archive_entry(archive_path, md5)
-
-def create_archive_entry(archive_path: str, md5: str):
+async def insert_archive_hash(archive_md5: str):
     """
-    Create an archive row in cache with corresponding md5.
+    Creates a hash entry, saying the corresponding Archive upload is cached.
+    This action is performed upon completion of an Archive upload.
+    Retry several times with exponential backoff in order to guarantee a write.
     """
-    archive_id = lrr_compute_id(archive_path)
-    filename = Path(archive_path).name
-    with closing(sqlite3.connect(config.CATAPULT_CACHE_DB)) as conn:
-        with closing(conn.cursor()) as c:
-            c.execute('''INSERT OR IGNORE INTO archive_hash VALUES (?, ?)''', (md5, archive_id))
-        conn.commit()
-    return archive_id
+    retry_count = 0
+    while True:
+        try:
+            async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as db:
+                await db.execute('INSERT OR IGNORE INTO archive_hash VALUES (?)', (archive_md5,))
+                await db.commit()
+                return
+        except aiosqlite.core.sqlite3.OperationalError:
+            time_to_sleep = 2 ** (retry_count + 1)
+            asyncio.sleep(time_to_sleep)
+            continue
 
-def clear_cache():
-    with closing(sqlite3.connect(config.CATAPULT_CACHE_DB)) as conn:
-        with closing(conn.cursor()) as c:
-            c.execute('DELETE FROM archive_hash')
-        conn.commit()
+async def drop_cache_table():
+    async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as db:
+        await db.execute('DROP TABLE IF EXISTS archive_hash')
+        await db.commit()
     return
 
-create_cache_table()
+asyncio.run(create_cache_table())

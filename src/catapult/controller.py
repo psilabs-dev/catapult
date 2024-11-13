@@ -1,71 +1,47 @@
-from concurrent.futures import ThreadPoolExecutor, Future
+import aiohttp
+import asyncio
 import hashlib
 import logging
-import multiprocessing
-import multiprocessing.pool
 import os
-from pathlib import Path
-import requests
-import threading
-import time
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List
 
 from catapult.connections import common
-from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES, ZIP_SIGNATURES
-from catapult.cache import get_cached_archive_id_else_compute
-from catapult.models import ArchiveMetadata, ArchiveUploadRequest, MultiArchiveUploadResponse
-from catapult.connections import nhentai_archivist
-from catapult.utils import calculate_sha1, find_all_archives, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
+from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES
+from catapult.cache import archive_hash_exists, insert_archive_hash
+from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
+from catapult.utils import calculate_sha1, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
 
-def validate_archive_file(archive_file_path: str, check_for_corruption : bool=True) -> Tuple[bool, str]:
+async def __archive_id_exists(
+        archive_id: str,
+        lrr_host: str,
+        headers: dict,
+        max_retries: int=3,
+        use_cache: bool=True,
+) -> bool:
     """
-    Validate an Archive for upload by checking file extension and MIME type.
-    
-    Parameters
-    ----------
-    archive_file_path : str
-        Path to an archive file.
-    check_for_coruption : bool
-        Check Archive for corruption in images contained.
-        If an image is corrupted, reject the archive.
-        This operation is time-expensive.
+    Return True if Archive ID exists in server.
+    """
+    url = f"{lrr_host}/api/archives/{archive_id}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url=url, headers=headers) as response:
+            data = await response.json()
+            return 'arcid' in data
 
-    Returns
-    -------
-    (bool, str)
-        True if the Archive is valid for upload, otherwise False with the reason for why it cannot be uploaded.
-    """
-    if not os.path.exists(archive_file_path):
-        return False, "file does not exist"
-    ext = os.path.splitext(archive_file_path)[1]
-    if not ext:
-        return False, "cannot have no extension" # cannot have no extension.
-    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
-        return False, "unsupported extension" # extension not supported by LANraragi.
+def __get_signature(archive_file_path: str) -> str:
     with open(archive_file_path, 'rb') as fb:
         signature = fb.read(8).hex()
+        return signature
 
-    # mime check
+def __is_valid_signature(signature: str) -> bool:
     is_allowed_mime = False
     for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.startswith(allowed_signature.lower().replace(' ', '')):
+        if signature.strip().startswith(allowed_signature.lower().replace(' ', '')):
             is_allowed_mime = True
-    if not is_allowed_mime:
-        return False, "failed the MIME test" # file MIME type not supported by LANraragi.
+    return is_allowed_mime
 
-    if check_for_corruption:
-        # archive integrity (only for zips for now).
-        for allowed_zip_signature in ZIP_SIGNATURES:
-            if signature.startswith(allowed_zip_signature.lower().replace(' ', '')):
-                if archive_contains_corrupted_image(Path(archive_file_path)):
-                    return False, "contains corrupted image"
-                break
-
-    return True, "success"
-
-def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> requests.Response:
+async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
     """
     Test connection to LANraragi server.
 
@@ -98,110 +74,71 @@ def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: i
         auth = lrr_build_auth(lrr_api_key)
         headers["Authorization"] = auth
 
-    while True:
-        try:
-            response = requests.get(
-                url,
-                headers=headers
-            )
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url=url, headers=headers) as response:
             return response
-        except requests.ConnectionError as conn_err:
-            if max_retries < 0 or retry_count < max_retries:
-                time_to_sleep = 2 ** retry_count
-                logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
-                time.sleep(time_to_sleep)
-                retry_count += 1
-                continue
-            else:
-                raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
-        except requests.Timeout as timeout_err:
-            if max_retries < 0 or retry_count < max_retries:
-                time_to_sleep = 2 ** (retry_count + 5)
-                logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
-                time.sleep(time_to_sleep)
-                retry_count += 1
-                continue
-            else:
-                raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
 
-def get_archive_ids(lrr_host: str, lrr_api_key: str=None, max_retries: int=3) -> Set[str]:
+async def async_validate_archive(
+        archive_file_path: str
+) -> ArchiveValidateResponse:
     """
-    Get all archive IDs as a set.
-
-    Parameters
-    ----------
-    lrr_host : str
-        Absolute URL of the LANraragi host (e.g. `http://localhost:3000` or `https://lanraragi`).
-    lrr_api_key : str, optional
-        API key for LANraragi server. Defaults to no key.
-    max_retries : int, optional
-        Max number of retries before client gives up; defaults to 3. If `max_retries` is set to -1, it will try forever.
-
-    Returns
-    -------
-    Set[str]
-        A set of Archive IDs.
-
-    Raises
-    ------
-    HTTPError
-        An unhandled status code has occurred.
-    ConnectionError
-        Cannot connect to server
-    Timeout
+    Validates that an Archive can be uploaded.
     """
-    retry_count = 0
-    url = f"{lrr_host}/api/archives"
+    validate_response = ArchiveValidateResponse()
+    validate_response.archive_file_path = archive_file_path
+    validate_response.message = ""
 
-    headers = dict()
-    if lrr_api_key:
-        auth = lrr_build_auth(lrr_api_key)
-        headers["Authorization"] = auth
+    # check if archive exists
+    if not os.path.exists(archive_file_path):
+        validate_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
+        return validate_response
+    
+    # check if extension is exists and valid
+    ext = os.path.splitext(archive_file_path)[1]
+    if not ext:
+        validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
+        validate_response.message = "No file extension."
+        return validate_response
+    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
+        validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
+        validate_response.message = f"Invalid extension: \"{ext}\""
+        return validate_response
 
-    while True:
-        try:
-            response = requests.get(
-                url,
-                headers=headers
-            )
-            status_code = response.status_code
-            if status_code == 200:
-                archive_ids = set()
-                for obj in response.json():
-                    archive_ids.add(obj['arcid'])
-                return archive_ids
-            else:
-                raise requests.HTTPError(f"Unhandled status code {status_code}: {response.text}")
+    # check if file signature is valid.
+    signature = __get_signature(archive_file_path)
+    is_allowed_mime = __is_valid_signature(signature)
+    if not is_allowed_mime:
+        validate_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
+        validate_response.message = f"Invalid signature: {signature}"
+        return validate_response
 
-        except requests.ConnectionError as conn_err:
-            if max_retries < 0 or retry_count < max_retries:
-                time_to_sleep = 2 ** retry_count
-                logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
-                time.sleep(time_to_sleep)
-                retry_count += 1
-                continue
-            else:
-                raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
-        except requests.Timeout as timeout_err:
-            if max_retries < 0 or retry_count < max_retries:
-                time_to_sleep = 2 ** (retry_count + 5)
-                logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
-                time.sleep(time_to_sleep)
-                retry_count += 1
-                continue
-            else:
-                raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
+    # check if archive does not contain corrupted data
+    if archive_contains_corrupted_image(archive_file_path):
+        validate_response.status_code = ArchiveValidateUploadStatus.CONTAINS_CORRUPTED_IMAGE
+        validate_response.message = "Archive contains corrupted image"
+        return validate_response
+    
+    validate_response.status_code = ArchiveValidateUploadStatus.SUCCESS
+    validate_response.message = "success"
+    return validate_response
 
-def upload_archive_to_server(
+async def async_upload_archive_to_server(
         archive_file_path: str,
         metadata: ArchiveMetadata,
         lrr_host: str,
         archive_file_name: str=None,
-        lrr_api_key: str=None,
-        max_retries: int=3
-) -> requests.Response:
+        headers: Dict[str, str]=None,
+        max_retries: int=3,
+        check_for_corruption: bool=False,
+        use_cache: bool=True,
+) -> ArchiveUploadResponse:
     """
-    Uploads an Archive to the LANraragi server. In case of connection error, implements exponential backoff.
+    Async method to upload an Archive to the LANraragi server. Implements the following flows:
+    1. check if Archive is a duplicate (using cache if necessary).
+    1. validate Archive file structure.
+    1. validate Archive file contents integrity (i.e. check if it contains corrupted images)
+    1. try to upload Archive to the Server.
+    1. handle upload result and update cache on success.
 
     Parameters
     ----------
@@ -217,217 +154,150 @@ def upload_archive_to_server(
         API key for LANraragi server. Defaults to no key.
     max_retries : int, optional
         Max number of retries before client gives up; defaults to 3. If `max_retries` is set to -1, it will try forever.
-
+    check_for_corruption : bool, False
+        Check Archive for corrupted images.
+    use_cache : bool, True
+        Use cache to avoid uploading Archives the program assumes is already uploaded previously.
+    
     Returns
     -------
-    Response
-        A requests.Response object. Will return the following status codes. It is the caller's responsibility to handle these status codes.
-        - 200 success
-        - 400 no file attached
-        - 401 require authentication/wrong credentials
-        - 409 duplicate archive
-        - 415 unsupported file
-        - 422 checksum mismatch
-        - 423 locked
-        - 500 internal server error
-    
+    ArchiveUploadResponse object.
+
     Raises
     ------
     requests.ConnectionError
         Cannot reach LANraragi server, SSL certificate invalid, or a general connection error.
     requests.Timeout
     """
+    upload_response = ArchiveUploadResponse()
+    upload_response.archive_file_path = archive_file_path
+    upload_response.message = ""
+    archive_md5 = hashlib.md5(archive_file_path.encode('utf-8')).hexdigest()
 
-    if not archive_file_name:
-        archive_file_name = Path(archive_file_path).name
+    # check if archive exists
+    if not os.path.exists(archive_file_path):
+        upload_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
+        return upload_response
 
-    headers = dict()
-    if lrr_api_key:
-        auth = lrr_build_auth(lrr_api_key)
-        headers["Authorization"] = auth
+    # check if extension is exists and valid
+    ext = os.path.splitext(archive_file_path)[1]
+    if not ext:
+        upload_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
+        upload_response.message = "No file extension."
+        return upload_response
+    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
+        upload_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
+        upload_response.message = f"Invalid extension: \"{ext}\""
+        return upload_response
 
-    archive_checksum = calculate_sha1(archive_file_path)
-    data = dict()
-
-    data["file_checksum"] = archive_checksum
-    if metadata.title:
-        data["title"] = metadata.title
-    if metadata.tags:
-        data["tags"] = metadata.tags
-    if metadata.summary:
-        data["summary"] = metadata.summary
-    if metadata.category_id:
-        data["category_id"] = metadata.category_id
-
-    # handle connection errors.
-    with open(archive_file_path, 'rb') as fb:
-        files = {'file': (archive_file_name, fb)}
-        url = f"{lrr_host}/api/archives/upload"
-
-        # attempt to send put request.
-        retry_count = 0
-        while True:
-            try:
-                response = requests.put(
-                    url,
-                    files=files,
-                    data=data,
-                    headers=headers
-                )
-                return response
-            except requests.ConnectionError as conn_err:
-                if max_retries < 0 or retry_count < max_retries:
-                    time_to_sleep = 2 ** retry_count
-                    logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
-                    time.sleep(time_to_sleep)
-                    retry_count += 1
-                    continue
-                else:
-                    raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
-            except requests.Timeout as timeout_err:
-                if max_retries < 0 or retry_count < max_retries:
-                    time_to_sleep = 2 ** (retry_count + 5)
-                    logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
-                    time.sleep(time_to_sleep)
-                    retry_count += 1
-                    continue
-                else:
-                    raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
-
-def __handle_upload_job(
-        upload_request: ArchiveUploadRequest, lrr_host: str, lrr_api_key: str, upload_counter: List[int], 
-        lock: threading.Lock=None, checksum_max_retries: int=None, max_retries: int=3,
-):
-    archive_filename = upload_request.archive_file_name
-    logger.debug(f"Uploading {archive_filename}...")
-    checksum_retry_count = 0
-    retry_count = 0
-    while True:
-        try:
-            response = upload_archive_to_server(
-                upload_request.archive_file_path,
-                upload_request.metadata,
-                lrr_host,
-                archive_file_name=upload_request.archive_file_name,
-                lrr_api_key=lrr_api_key
-            )
-            status_code = response.status_code
-            if status_code == 200:
-                logger.info(f"Successfully uploaded {archive_filename} to {lrr_host}.")
-                if lock:
-                    with lock:
-                        upload_counter[0] += 1
-                else:
-                    upload_counter[0] += 1
-                return
-            elif status_code == 401:
-                raise ConnectionError(f"Invalid credentials while authenticating to LANraragi server {lrr_host}.")
-            elif status_code == 409: # duplicate archive
-                logger.warning(f"Duplicate archive: {upload_request.archive_file_name}.")
-                return
-            elif status_code == 415: # unsupported file
-                logger.warning(f"Unsupported file: {upload_request.archive_file_name}.")
-                return
-            elif status_code == 417: # checksum mismatch, try again.
-                if checksum_retry_count < checksum_max_retries:
-                    logger.warning(f"Checksum mismatch while handling {upload_request.archive_file_name}; trying again...")
-                    checksum_retry_count += 1
-                    continue
-                else:
-                    raise ConnectionError(f"Persistent checksum issues with {lrr_host} while uploading {archive_filename}.")
-            elif status_code == 422: # possible issue with file or filename.
-                logger.warning(f"Unprocessable entity {upload_request.archive_file_name}; see server logs.")
-                return
-            elif status_code == 423: # locked
-                logger.warning(f"File resource locked (file {upload_request.archive_file_name} is probably already being uploaded by another process).")
-                return
-            elif status_code == 500: # server error
-                raise requests.HTTPError(f"A server error has occurred while uploading {upload_request.archive_file_name}! {response.text}")
-            else:
-                raise requests.HTTPError(f"status code {status_code}; error {response.text}")
-        except requests.ConnectionError as conn_err:
-            if max_retries < 0 or retry_count < max_retries:
-                time_to_sleep = 2 ** retry_count
-                logger.warning(f"Encountered connection error (is the server \"{lrr_host}\" online?); sleeping for {time_to_sleep}s...")
-                time.sleep(time_to_sleep)
-                retry_count += 1
-                continue
-            else:
-                raise requests.ConnectionError("Encountered persistent connection error: ", conn_err)
-        except requests.Timeout as timeout_err:
-            if max_retries < 0 or retry_count < max_retries:
-                time_to_sleep = 2 ** (retry_count + 5)
-                logger.warning(f"Encountered timeout; backing off for {time_to_sleep}s...")
-                time.sleep(time_to_sleep)
-                retry_count += 1
-                continue
-            else:
-                raise requests.Timeout(f"Failed to resolve server timeout: ", timeout_err)
-
-def __is_duplicate(upload_request: ArchiveUploadRequest, archive_id_set: Set[str], use_cache: bool) -> Tuple[bool, ArchiveUploadRequest]:
-    """
-    Check if an upload is a duplicate of existing archive set in server.
-    """
-
-    # use cache
+    # check if archive is duplicate (locally)
     if use_cache:
-        local_archive_id = get_cached_archive_id_else_compute(upload_request.archive_file_path)
-    else:
-        local_archive_id = lrr_compute_id(upload_request.archive_file_path)
-    return (local_archive_id in archive_id_set, upload_request)
+        archive_uploaded = await archive_hash_exists(archive_md5)
+        if archive_uploaded:
+            upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
+            upload_response.message = "Duplicate in cache"
+            return upload_response
 
-def __find_nonduplicate_upload_requests_from_all_upload_requests(
-        upload_requests: List[ArchiveUploadRequest], archive_id_set: Set[str],
-        use_multiprocessing: bool=False, use_cache: bool=True
-) -> List[ArchiveUploadRequest]:
-    """
-    Filter the upload requests by requests whose Archive IDs do not exist in the server, and returns this filtered list.
-    """
-    # trivial case: if the server has no archives, then there are no duplicates.
-    if not archive_id_set:
-        return upload_requests
+    # check if file signature is valid.
+    signature = __get_signature(archive_file_path)
+    is_allowed_mime = __is_valid_signature(signature)
+    if not is_allowed_mime:
+        upload_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
+        upload_response.message = f"Invalid signature: {signature}"
+        return upload_response
 
-    nonduplicate_upload_requests = list()
-    if use_multiprocessing:
-        with multiprocessing.Pool() as pool:
-            results = pool.starmap(__is_duplicate, [(upload_request, archive_id_set, use_cache) for upload_request in upload_requests])
-        num_duplicates = sum(1 for is_dup, _ in results if is_dup)
-        nonduplicate_upload_requests = [req for is_dup, req in results if not is_dup]
-    else:
-        num_duplicates = 0
-        for upload_request in upload_requests:
-            is_duplicate, _upload_request = __is_duplicate(upload_request, archive_id_set, use_cache)
-            if is_duplicate:
-                num_duplicates += 1
-                continue
-            else:
-                nonduplicate_upload_requests.append(upload_request)
-    logger.info(f"Removed {num_duplicates} duplicates from being uploaded.")
-    return nonduplicate_upload_requests
+    # check if archive is duplicate (remotely)
+    archive_id = lrr_compute_id(archive_file_path)
+    archive_is_duplicate = await __archive_id_exists(archive_id, lrr_host, headers=headers)
+    if archive_is_duplicate:
+        upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
+        upload_response.message = "Duplicate in server"
+        return upload_response
 
-def __find_uncorrupted_upload_requests_from_all_upload_requests(
-        upload_requests: List[ArchiveUploadRequest], use_multiprocessing: bool=False
-) -> List[ArchiveUploadRequest]:
-    """
-    Return a filtered list that removes Archives containing corrupted images.
-    """
-    uncorrupted_upload_requests = list()
-    if use_multiprocessing:
-        with multiprocessing.Pool() as pool:
-            results = pool.starmap(archive_contains_corrupted_image, [(upload_request.archive_file_path,) for upload_request in upload_requests])
-            uncorrupted_upload_requests = list(map(lambda s: upload_requests[s[0]], filter(lambda t: not t[1], enumerate(results))))
-    else:
-        for upload_request in upload_requests:
-            if not archive_contains_corrupted_image(upload_request.archive_file_path):
-                uncorrupted_upload_requests.append(upload_request)
-    num_corrupted_archives = len(upload_requests) - len(uncorrupted_upload_requests)
-    logger.info(f"Removed {num_corrupted_archives} corrupted archives from being uploaded.")
-    return uncorrupted_upload_requests
+    # check if archive does not contain corrupted data
+    if check_for_corruption:
+        if archive_contains_corrupted_image(archive_file_path):
+            upload_response.status_code = ArchiveValidateUploadStatus.CONTAINS_CORRUPTED_IMAGE
+            upload_response.message = "Archive contains corrupted image"
+            return upload_response
 
-def upload_multiple_archives_to_server(
+    # upload archive to server
+    url = f"{lrr_host}/api/archives/upload"
+    archive_checksum = calculate_sha1(archive_file_path)
+    archive_file_name = archive_file_name if archive_file_name else os.path.basename(archive_file_path)
+    
+    async with aiohttp.ClientSession() as session:
+        with open(archive_file_path, 'rb') as fb:
+            files = {'file': (archive_file_name, fb)}
+            form_data = aiohttp.FormData(quote_fields=False)
+            form_data.add_field('file', fb, filename=archive_file_name, content_type='application/octet-stream')
+            form_data.add_field("file_checksum", archive_checksum)
+            if metadata.title:
+                form_data.add_field('title', metadata.title)
+            if metadata.tags:
+                form_data.add_field('tags', metadata.tags)
+            if metadata.summary:
+                form_data.add_field('summary', metadata.summary)
+            if metadata.category_id:
+                form_data.add_field('category_id', metadata.category_id)
+            
+            checksum_mismatch_retry_count = 0
+            connection_error_retry_count = 0
+            while True:
+                try:
+                    async with session.put(url=url, data=form_data, headers=headers) as response:
+                        status_code = response.status
+                        if status_code == 200:
+                            upload_response.status_code = ArchiveValidateUploadStatus.SUCCESS
+                            if use_cache:
+                                await insert_archive_hash(archive_md5)
+                            logger.info(f"Archive uploaded: {archive_file_name}")
+                            return upload_response
+                        elif status_code == 400: # shouldn't happen.
+                            upload_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
+                            return upload_response
+                        elif status_code == 409: # shouldn't happen if checks are done.
+                            upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
+                            upload_response.message = "Duplicate in server"
+                            return upload_response
+                        elif status_code == 415: # shouldn't happen if checks are done beforehand.
+                            upload_response.status_code = ArchiveValidateUploadStatus.UNSUPPORTED_FILE_EXTENSION
+                            upload_response.message = await response.json()["error"]
+                            return upload_response
+                        elif status_code == 417: # try several times for checksum mismatch.
+                            if checksum_mismatch_retry_count < 3:
+                                checksum_mismatch_retry_count += 1
+                                continue
+                            else:
+                                upload_response.status_code = ArchiveValidateUploadStatus.CHECKSUM_MISMATCH
+                                upload_response.message = await response.json()["error"]
+                                return upload_response
+                        elif status_code == 422: # probably shouldn't happen.
+                            upload_response.status_code = ArchiveValidateUploadStatus.UNPROCESSABLE_ENTITY
+                            return upload_response
+                        elif status_code == 423: # will happen if upload design is bad.
+                            upload_response.status_code = ArchiveValidateUploadStatus.LOCKED
+                            return upload_response
+                        elif status_code == 500:
+                            upload_response.status_code = ArchiveValidateUploadStatus.INTERNAL_SERVER_ERROR
+                            upload_response.message = await response.json()["error"]
+                            return upload_response
+                        else:
+                            logger.error(f"Unexpected error occurred with status {status_code}: {response.text}")
+                            upload_response.status_code = ArchiveValidateUploadStatus.FAILURE
+                            upload_response.message = response.text
+                            return response
+                except aiohttp.ClientConnectionError as e:
+                    if connection_error_retry_count < max_retries or max_retries == -1:
+                        time_to_sleep = 2 ** (connection_error_retry_count + 1)
+                        asyncio.sleep(time_to_sleep)
+                    else:
+                        upload_response.status_code = ArchiveValidateUploadStatus.NETWORK_FAILURE
+                        return upload_response
+
+async def upload_multiple_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, 
-        remove_duplicates: bool=False, check_for_corruption: bool=False,
-        use_multiprocessing: bool=False, use_threading: bool=False, max_upload_workers: int=None, use_cache: bool=True
+        use_cache: bool=True
 ) -> MultiArchiveUploadResponse:
     """
     Upload multiple Archives to the LANraragi server.
@@ -440,17 +310,6 @@ def upload_multiple_archives_to_server(
         Absolute URL of the LANraragi host (e.g. `http://localhost:3000` or `https://lanraragi`).
     lrr_api_key : str, optional
         API key for LANraragi server. Defaults to no key.
-    remove_duplicates : bool, optional
-        Remove duplicates from requests before the upload stage.
-    check_for_corruption : bool, False
-        Check and remove Archives that contain corrupted images from being uploaded.
-        This is an expensive process, as each Archive will be unzipped and inspected.
-    use_multiprocessing : bool, False
-        Allow use of multiprocessing (e.g. for LRR ID computation and deduplication)
-    use_threading : bool, False
-        Allow use of multithreading for uploads
-    max_upload_workers : int, optional
-        Max number of threads to perform uploads. Defaults to 1 worker.
     use_cache : int, optional
         Use cache for Archive-to-server deduplication (Default: True).
 
@@ -463,88 +322,27 @@ def upload_multiple_archives_to_server(
     ConnectionError
         Cannot reach LANraragi server.
     """
-    if not max_upload_workers:
-        max_upload_workers = 1
+    batch_response = MultiArchiveUploadResponse()
 
-    fn_call_start = time.time()
-    response = MultiArchiveUploadResponse()
+    semaphore = asyncio.Semaphore(2)
+    async def __upload_archive_task(archive_file_path, metadata, lrr_host, archive_file_name, headers):
+        async with semaphore:
+            return await async_upload_archive_to_server(archive_file_path, metadata, lrr_host, archive_file_name, headers=headers)
 
-    if not upload_requests:
-        logger.warning("Nothing to upload.")
-        response.uploaded_files = 0
-        return response
-
-    # connection must be available.
-    logger.info("Testing connection to LANraragi server...")
-    is_connected = run_lrr_connection_test(lrr_host, lrr_api_key=lrr_api_key).status_code == 200
-    if not is_connected:
-        raise ConnectionError(f"Cannot connect to LANraragi server {lrr_host}! Test your connection before trying again.")
-    logger.info("Successfully connected.")
-
-
-    # remove requests that have same ID. (can be very slow)
-    if remove_duplicates:
-        # get all existing archive IDs from server first; this will be used to prevent uploading duplicates and wasting requests later.
-        logger.info("Fetching Archive IDs...")
-        archive_id_set = get_archive_ids(lrr_host, lrr_api_key=lrr_api_key)
-        logger.info("Fetched Archive IDs.")
-
-        logger.info("Removing duplicate requests...")
-        upload_requests = __find_nonduplicate_upload_requests_from_all_upload_requests(
-            upload_requests, archive_id_set, use_multiprocessing=use_multiprocessing, use_cache=use_cache
-        )
-
-        if not upload_requests:
-            logger.warning("Nothing to upload.")
-            response.uploaded_files = 0
-            return response
-    
-    # check if images contain corruption (can be very slow)
-    if check_for_corruption:
-        logger.info("Checking archives for corruption...")
-        upload_requests = __find_uncorrupted_upload_requests_from_all_upload_requests(
-            upload_requests, use_multiprocessing=use_multiprocessing
-        )
-
-        if not upload_requests:
-            logger.warning("Nothing to upload.")
-            response.uploaded_files = 0
-            return response
-
-    logger.info("Starting upload job...")
-    upload_counter = [0]
-    if use_threading:
-        lock = threading.Lock()
-        with ThreadPoolExecutor(max_workers=max_upload_workers) as executor:
-            futures: List[Future] = list()
-            for upload_request in upload_requests:
-                future = executor.submit(
-                    __handle_upload_job,
-                    upload_request,
-                    lrr_host,
-                    lrr_api_key,
-                    upload_counter,
-                    lock=lock
-                )
-                futures.append(future)
-            for future in futures:
-                future.result()
-    else:
-        for upload_request in upload_requests:
-            __handle_upload_job(upload_request, lrr_host, lrr_api_key, upload_counter)
-
-    fn_call_time = time.time() - fn_call_start
-
-    upload_count = upload_counter[0]
-    logger.info(f"Uploaded {upload_count} new archives; elapsed time: {fn_call_time}s.")
-    response.uploaded_files = upload_count
-
-    return response
+    headers = dict()
+    if lrr_api_key:
+        headers["Authorization"] = lrr_build_auth(lrr_api_key)
+    tasks = [
+        asyncio.create_task(
+            __upload_archive_task(upload_request.archive_file_path, upload_request.metadata, lrr_host, upload_request.archive_file_name, headers=headers)
+        ) for upload_request in upload_requests
+    ]
+    upload_responses: List[ArchiveUploadResponse] = await asyncio.gather(*tasks)
+    batch_response.upload_responses = upload_responses
+    return batch_response
 
 def start_folder_upload_process(
-        contents_directory: str, lrr_host: str, lrr_api_key: str=None, 
-        remove_duplicates: bool=False, check_for_corruption: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
+        contents_directory: str, lrr_host: str, lrr_api_key: str=None, use_cache: bool=True
 ):
     """
     Upload archives found in a folder.
@@ -552,32 +350,8 @@ def start_folder_upload_process(
     logger.info("Building folder archive upload requests...")
     upload_requests = common.build_upload_requests(contents_directory)
     logger.info("Running upload job for folder...")
-    uploads = upload_multiple_archives_to_server(
-        upload_requests, lrr_host, lrr_api_key=lrr_api_key, 
-        remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
+    batch_upload_response = asyncio.run(upload_multiple_archives_to_server(
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key,
         use_cache=use_cache
-    )
-    return uploads
-
-def start_nhentai_archivist_upload_process(
-        db: str, contents_directory: str, lrr_host: str, lrr_api_key: str=None, 
-        remove_duplicates: bool=False, check_for_corruption: bool=False,
-        use_threading: bool=False, use_multiprocessing: bool=False, max_upload_workers: int=None, use_cache: bool=True
-):
-    """
-    Upload archives downloaded by nhentai archivist.
-    """
-    if not nhentai_archivist.is_available(db, contents_directory):
-        logger.error("Nhentai archivist is not available.")
-        return
-    logger.info("Building nhentai archivist upload requests...")
-    upload_requests = nhentai_archivist.build_upload_requests(db, contents_directory)
-    logger.info("Running upload job for nhentai archivist...")
-    uploads = upload_multiple_archives_to_server(
-        upload_requests, lrr_host, lrr_api_key=lrr_api_key, 
-        remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
-        use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=max_upload_workers,
-        use_cache=use_cache
-    )
-    return uploads
+    ))
+    return batch_upload_response
