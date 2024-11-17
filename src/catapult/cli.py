@@ -1,11 +1,14 @@
 import argparse
+import asyncio
 import logging
 from pathlib import Path
+from time import perf_counter
 
+from .cache import drop_cache_table
 from .configuration import config
-from .controller import start_folder_upload_process, start_nhentai_archivist_upload_process, run_lrr_connection_test, upload_archive_to_server, validate_archive_file
-from .models import ArchiveMetadata
-from .utils import get_version, mask_string
+from .controller import start_folder_upload_process, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
+from .models import ArchiveMetadata, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
+from .utils import get_version, mask_string, lrr_build_auth
 
 def __configure(args):
     # create configuration directory.
@@ -29,24 +32,29 @@ def __configure(args):
     config.save()
     return 0
 
+def __reset_cache():
+    asyncio.run(drop_cache_table())
+    print("Cache dropped.")
+
 def __check(args):
     arg_lrr_host = args.lrr_host
     arg_lrr_api_key = args.lrr_api_key
     
-    response = run_lrr_connection_test(config.lrr_host, lrr_api_key=config.lrr_api_key)
-    status_code = response.status_code
+    headers = dict()
+    response = asyncio.run(run_lrr_connection_test(config.lrr_host, lrr_api_key=config.lrr_api_key))
+    status_code = response.status
     if status_code == 200:
         print('success')
         return 0
     else:
-        error_message = response.json()['error']
-        print(f"Failed to connect (status code {status_code}): {error_message}")
+        print("fail")
         return 1
 
 def __validate(args):
     file_path = args.filepath
-    is_check_corruption = not args.no_check_corruption
-    print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
+    # print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
+    response = asyncio.run(async_validate_archive(file_path))
+    print(f"{response.status_code.name} - {response.message}")
 
 def __upload(args):
     file_path = args.filepath
@@ -54,7 +62,6 @@ def __upload(args):
     tags = args.tags
     summary = args.summary
     category_id = args.category_id
-    is_check_corruption = not args.no_check_corruption
 
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
@@ -65,23 +72,10 @@ def __upload(args):
         summary=summary,
         category_id=category_id
     )
-
-    file_is_valid, message = validate_archive_file(file_path, check_for_corruption=is_check_corruption)
-    if not file_is_valid:
-        print(f"File {file_path} is not valid. Reason: {message}.")
-        return 1
-
-    # validation
-    config_is_valid, validation_err = config.is_valid()
-    if not config_is_valid:
-        print(validation_err)
-        return 1
-
-    if not Path(file_path).exists():
-        print(f"File {file_path} does not exist!")
-        return 1
-
-    response = upload_archive_to_server(file_path, metadata, lrr_host, lrr_api_key=lrr_api_key)
+    headers = dict()
+    if lrr_api_key:
+        headers["Authorization"] = lrr_build_auth(lrr_api_key)
+    response = asyncio.run(async_upload_archive_to_server(file_path, metadata, lrr_host, headers=headers))
     status_code = response.status_code
     if status_code == 200:
         print(f"Uploaded {file_path} to server.")
@@ -97,13 +91,10 @@ def __multi_upload(args):
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
 
-    remove_duplicates = args.remove_duplicates
-    use_threading = args.threading
-    use_multiprocessing = args.multiprocessing
-    upload_workers = args.upload_workers
     use_cache = not args.no_cache
-    check_for_corruption = not args.no_check_corruption
+    response = None
 
+    start_time = perf_counter()
     if plugin_command == 'from-folder':
         contents_directory = args.folder
 
@@ -112,28 +103,22 @@ def __multi_upload(args):
 
         assert contents_directory, "no contents directory"
 
-        start_folder_upload_process(
-            contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
-            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
-            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
+        response = start_folder_upload_process(
+            contents_directory, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
         )
-    elif plugin_command == 'from-nhentai-archivist':
-        db = args.db
-        contents_directory = args.folder
 
-        if not db:
-            db = config.multi_upload_nhentai_archivist_db
-        if not contents_directory:
-            contents_directory = config.multi_upload_nhentai_archivist_content_dir
-
-        assert db, "no db"
-        assert contents_directory, "no contents directory"
-
-        start_nhentai_archivist_upload_process(
-            db, contents_directory, lrr_host, lrr_api_key=lrr_api_key, 
-            remove_duplicates=remove_duplicates, check_for_corruption=check_for_corruption,
-            use_threading=use_threading, use_multiprocessing=use_multiprocessing, max_upload_workers=upload_workers, use_cache=use_cache
-        )
+    total_time = perf_counter() - start_time
+    if response:
+        upload_responses = response.upload_responses
+        stats_by_status_code = dict()
+        for upload_response in upload_responses:
+            status_code = upload_response.status_code.name
+            if status_code in stats_by_status_code:
+                stats_by_status_code[status_code] += 1
+            else:
+                stats_by_status_code[status_code] = 1
+        print(f"\n --".join([f"{key}: {stats_by_status_code[key]}" for key in stats_by_status_code]))
+        print(f"Time taken: {total_time}s")
 
 def main():
 
@@ -153,10 +138,12 @@ def main():
     check_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
     check_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
 
+    # reset cache subparser
+    reset_cache_subparser = subparsers.add_parser("reset-cache", help="Reset cache.")
+
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")
     validate_subparser.add_argument("filepath", help="Path to file to validate.")
-    validate_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not check if a (zip) archive contains corrupted images.')
 
     # upload subparser
     upload_subparser = subparsers.add_parser("upload", help="Upload a file to the server.")
@@ -167,26 +154,17 @@ def main():
     upload_subparser.add_argument('--category_id', type=int, help='Category ID of the archive.')
     upload_subparser.add_argument('--lrr-host', type=str, help='URL of the server.')
     upload_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
-    upload_subparser.add_argument('--no-check-corruption', action='store_true', help='Do not upload if the archive contains corrupted images.')
 
     # jobs subparser
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
     mu_subparsers = multiupload_subparser.add_subparsers(dest='plugin_command')
     mu_folder_parser = mu_subparsers.add_parser('from-folder', help="Upload archives from folder.")
     mu_folder_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
-    mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
-    mu_nh_parser.add_argument('--db', type=str, help='Path to nhentai archivist database.')
-    mu_nh_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
 
-    for plugin_parser in [mu_folder_parser, mu_nh_parser]:
+    for plugin_parser in [mu_folder_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
         plugin_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
-        plugin_parser.add_argument('--threading', action='store_true', help='Use multithreading.')
-        plugin_parser.add_argument('--multiprocessing', action='store_true', help='Use multiprocessing.')
-        plugin_parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicates before uploading.')
-        plugin_parser.add_argument('--upload-workers', type=int, default=1, help='Number of upload workers in a multithreaded job (default 1).')
         plugin_parser.add_argument('--no-cache', action='store_true', help='Disable cache when remove duplicates.')
-        plugin_parser.add_argument('--no-check-corruption', action='store_true', help='Do not upload Archives that contain corrupted images.')
 
     args = parser.parse_args()
     command = args.command
@@ -198,6 +176,9 @@ def main():
 
     elif command == "configure":
         return __configure(args)
+
+    elif command == "reset-cache":
+        return __reset_cache()
 
     elif command == "check":
         return __check(args)
