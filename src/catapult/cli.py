@@ -7,7 +7,7 @@ from time import perf_counter
 from .cache import drop_cache_table
 from .configuration import config
 from .controller import start_folder_upload_process, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
-from .models import ArchiveMetadata
+from .models import ArchiveMetadata, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from .utils import get_version, mask_string, lrr_build_auth
 
 def __configure(args):
@@ -92,7 +92,9 @@ def __multi_upload(args):
     lrr_api_key = config.lrr_api_key
 
     use_cache = not args.no_cache
+    response = None
 
+    start_time = perf_counter()
     if plugin_command == 'from-folder':
         contents_directory = args.folder
 
@@ -101,9 +103,22 @@ def __multi_upload(args):
 
         assert contents_directory, "no contents directory"
 
-        start_folder_upload_process(
+        response = start_folder_upload_process(
             contents_directory, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
         )
+
+    total_time = perf_counter() - start_time
+    if response:
+        upload_responses = response.upload_responses
+        stats_by_status_code = dict()
+        for upload_response in upload_responses:
+            status_code = upload_response.status_code.name
+            if status_code in stats_by_status_code:
+                stats_by_status_code[status_code] += 1
+            else:
+                stats_by_status_code[status_code] = 1
+        print(f"\n --".join([f"{key}: {stats_by_status_code[key]}" for key in stats_by_status_code]))
+        print(f"Time taken: {total_time}s")
 
 def main():
 

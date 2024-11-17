@@ -1,14 +1,11 @@
 import base64
 import hashlib
 import logging
-import multiprocessing
 import numpy as np
 import os
 from pathlib import Path
 from PIL import Image
-import requests
 import tempfile
-import time
 from typing import List
 import zipfile
 

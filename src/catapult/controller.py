@@ -129,14 +129,12 @@ async def async_upload_archive_to_server(
         archive_file_name: str=None,
         headers: Dict[str, str]=None,
         max_retries: int=3,
-        check_for_corruption: bool=False,
         use_cache: bool=True,
 ) -> ArchiveUploadResponse:
     """
     Async method to upload an Archive to the LANraragi server. Implements the following flows:
     1. check if Archive is a duplicate (using cache if necessary).
     1. validate Archive file structure.
-    1. validate Archive file contents integrity (i.e. check if it contains corrupted images)
     1. try to upload Archive to the Server.
     1. handle upload result and update cache on success.
 
@@ -172,6 +170,7 @@ async def async_upload_archive_to_server(
     upload_response = ArchiveUploadResponse()
     upload_response.archive_file_path = archive_file_path
     upload_response.message = ""
+    archive_file_name = archive_file_name if archive_file_name else os.path.basename(archive_file_path)
     archive_md5 = hashlib.md5(archive_file_path.encode('utf-8')).hexdigest()
 
     # check if archive exists
@@ -196,6 +195,7 @@ async def async_upload_archive_to_server(
         if archive_uploaded:
             upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
             upload_response.message = "Duplicate in cache"
+            logger.info(f"Duplicate in cache: {archive_file_name}")
             return upload_response
 
     # check if file signature is valid.
@@ -212,19 +212,15 @@ async def async_upload_archive_to_server(
     if archive_is_duplicate:
         upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
         upload_response.message = "Duplicate in server"
+        logger.info(f"Duplicate in server: {archive_file_name}")
         return upload_response
 
-    # check if archive does not contain corrupted data
-    if check_for_corruption:
-        if archive_contains_corrupted_image(archive_file_path):
-            upload_response.status_code = ArchiveValidateUploadStatus.CONTAINS_CORRUPTED_IMAGE
-            upload_response.message = "Archive contains corrupted image"
-            return upload_response
+    # TODO: check if archive is corrupted
+    # this is probably something that is done better off on another machine or separate workload...
 
     # upload archive to server
     url = f"{lrr_host}/api/archives/upload"
     archive_checksum = calculate_sha1(archive_file_path)
-    archive_file_name = archive_file_name if archive_file_name else os.path.basename(archive_file_path)
     
     async with aiohttp.ClientSession() as session:
         with open(archive_file_path, 'rb') as fb:
@@ -297,7 +293,8 @@ async def async_upload_archive_to_server(
 
 async def upload_multiple_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, 
-        use_cache: bool=True
+        use_cache: bool=True,
+        semaphore_value: int=8,
 ) -> MultiArchiveUploadResponse:
     """
     Upload multiple Archives to the LANraragi server.
@@ -324,7 +321,7 @@ async def upload_multiple_archives_to_server(
     """
     batch_response = MultiArchiveUploadResponse()
 
-    semaphore = asyncio.Semaphore(2)
+    semaphore = asyncio.Semaphore(value=semaphore_value)
     async def __upload_archive_task(archive_file_path, metadata, lrr_host, archive_file_name, headers):
         async with semaphore:
             return await async_upload_archive_to_server(archive_file_path, metadata, lrr_host, archive_file_name, headers=headers)
