@@ -77,12 +77,12 @@ def __upload(args):
         headers["Authorization"] = lrr_build_auth(lrr_api_key)
     response = asyncio.run(async_upload_archive_to_server(file_path, metadata, lrr_host, headers=headers))
     status_code = response.status_code
-    if status_code == 200:
+    if status_code == ArchiveValidateUploadStatus.SUCCESS:
         print(f"Uploaded {file_path} to server.")
         return 0
     else:
-        error_message = response.json()['error']
-        print(f"Failed to upload file (status code {status_code}): {error_message}")
+        error_message = response.message
+        print(f"Failed to upload file (status code {status_code.name}): {error_message}")
         return 1
 
 def __multi_upload(args):

@@ -5,6 +5,8 @@ import logging
 import os
 from typing import Dict, List
 
+import aiohttp.client_exceptions
+
 from catapult.connections import common
 from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES
 from catapult.cache import archive_hash_exists, insert_archive_hash
@@ -258,7 +260,7 @@ async def async_upload_archive_to_server(
                             return upload_response
                         elif status_code == 415: # shouldn't happen if checks are done beforehand.
                             upload_response.status_code = ArchiveValidateUploadStatus.UNSUPPORTED_FILE_EXTENSION
-                            upload_response.message = await response.json()["error"]
+                            upload_response.message = (await response.json())["error"]
                             return upload_response
                         elif status_code == 417: # try several times for checksum mismatch.
                             if checksum_mismatch_retry_count < 3:
@@ -266,7 +268,7 @@ async def async_upload_archive_to_server(
                                 continue
                             else:
                                 upload_response.status_code = ArchiveValidateUploadStatus.CHECKSUM_MISMATCH
-                                upload_response.message = await response.json()["error"]
+                                upload_response.message = (await response.json())["error"]
                                 return upload_response
                         elif status_code == 422: # probably shouldn't happen.
                             upload_response.status_code = ArchiveValidateUploadStatus.UNPROCESSABLE_ENTITY
@@ -276,7 +278,11 @@ async def async_upload_archive_to_server(
                             return upload_response
                         elif status_code == 500:
                             upload_response.status_code = ArchiveValidateUploadStatus.INTERNAL_SERVER_ERROR
-                            upload_response.message = await response.json()["error"]
+                            try:
+                                upload_response.message = (await response.json())["error"]
+                            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                                logger.error("An unhandled internal server error has occurred!", content_type_error)
+                                upload_response.message = await response.text()
                             return upload_response
                         else:
                             logger.error(f"Unexpected error occurred with status {status_code}: {response.text}")
