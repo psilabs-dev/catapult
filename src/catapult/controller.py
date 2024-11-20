@@ -1,17 +1,16 @@
 import aiohttp
+import aiohttp.client_exceptions
 import asyncio
 import hashlib
 import logging
-import os
+from pathlib import Path
 from typing import Dict, List
 
-import aiohttp.client_exceptions
-
 from catapult.connections import common
-from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES
+from catapult.constants import ALLOWED_LRR_EXTENSIONS
 from catapult.cache import archive_hash_exists, insert_archive_hash
 from catapult.lanraragi.client import LRRClient
-from catapult.lanraragi.utils import compute_sha1, compute_archive_id
+from catapult.lanraragi.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
 
@@ -41,18 +40,6 @@ async def __archive_id_exists(
                 retry_count += 1
             else:
                 raise e
-
-def __get_signature(archive_file_path: str) -> str:
-    with open(archive_file_path, 'rb') as fb:
-        signature = fb.read(8).hex()
-        return signature
-
-def __is_valid_signature(signature: str) -> bool:
-    is_allowed_mime = False
-    for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.strip().startswith(allowed_signature.lower().replace(' ', '')):
-            is_allowed_mime = True
-    return is_allowed_mime
 
 async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
     """
@@ -94,7 +81,7 @@ async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retr
                 raise e
 
 async def async_validate_archive(
-        archive_file_path: str
+        archive_file_path: Path
 ) -> ArchiveValidateResponse:
     """
     Validates that an Archive can be uploaded.
@@ -104,12 +91,12 @@ async def async_validate_archive(
     validate_response.message = ""
 
     # check if archive exists
-    if not os.path.exists(archive_file_path):
+    if not archive_file_path.exists:
         validate_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
         return validate_response
     
     # check if extension is exists and valid
-    ext = os.path.splitext(archive_file_path)[1]
+    ext = archive_file_path.suffix
     if not ext:
         validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
         validate_response.message = "No file extension."
@@ -120,8 +107,8 @@ async def async_validate_archive(
         return validate_response
 
     # check if file signature is valid.
-    signature = __get_signature(archive_file_path)
-    is_allowed_mime = __is_valid_signature(signature)
+    signature = get_signature_hex(archive_file_path)
+    is_allowed_mime = is_valid_signature_hex(signature)
     if not is_allowed_mime:
         validate_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
         validate_response.message = f"Invalid signature: {signature}"
@@ -138,7 +125,7 @@ async def async_validate_archive(
     return validate_response
 
 async def async_upload_archive_to_server(
-        archive_file_path: str,
+        archive_file_path: Path,
         metadata: ArchiveMetadata,
         lrr_host: str,
         archive_file_name: str=None,
@@ -155,7 +142,7 @@ async def async_upload_archive_to_server(
 
     Parameters
     ----------
-    archive_file_path : str
+    archive_file_path : Path
         Full path to an archive file. File must exist and be a valid file type.
     metadata : ArchiveMetadata
         Archive metadata.
@@ -185,17 +172,17 @@ async def async_upload_archive_to_server(
     upload_response = ArchiveUploadResponse()
     upload_response.archive_file_path = archive_file_path
     upload_response.message = ""
-    archive_file_name = archive_file_name if archive_file_name else os.path.basename(archive_file_path)
-    archive_md5 = hashlib.md5(archive_file_path.encode('utf-8')).hexdigest()
+    archive_file_name = archive_file_name if archive_file_name else archive_file_path.name
+    archive_md5 = hashlib.md5(str(archive_file_path).encode('utf-8')).hexdigest()
     client = LRRClient(lrr_host, lrr_api_key=lrr_api_key)
 
     # check if archive exists
-    if not os.path.exists(archive_file_path):
+    if not archive_file_path.exists():
         upload_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
         return upload_response
 
     # check if extension is exists and valid
-    ext = os.path.splitext(archive_file_path)[1]
+    ext = archive_file_path.suffix
     if not ext:
         upload_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
         upload_response.message = "No file extension."
@@ -215,8 +202,8 @@ async def async_upload_archive_to_server(
             return upload_response
 
     # check if file signature is valid.
-    signature = __get_signature(archive_file_path)
-    is_allowed_mime = __is_valid_signature(signature)
+    signature = get_signature_hex(archive_file_path)
+    is_allowed_mime = is_valid_signature_hex(signature)
     if not is_allowed_mime:
         upload_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
         upload_response.message = f"Invalid signature: {signature}"
@@ -235,10 +222,9 @@ async def async_upload_archive_to_server(
     # this is probably something that is done better off on another machine or separate workload...
 
     # upload archive to server
-    archive_checksum = compute_sha1(archive_file_path)
     with open(archive_file_path, 'rb') as archive_br:
-        # archive_checksum = compute_sha1(archive_br)
-        # archive_br.seek(0)
+        archive_checksum = compute_sha1(archive_br)
+        archive_br.seek(0)
         checksum_mismatch_retry_count = 0
         connection_error_retry_count = 0
         while True:
@@ -337,7 +323,9 @@ async def upload_multiple_archives_to_server(
     batch_response = MultiArchiveUploadResponse()
 
     semaphore = asyncio.Semaphore(value=semaphore_value)
-    async def __upload_archive_task(archive_file_path, metadata, lrr_host, archive_file_name, lrr_api_key):
+    async def __upload_archive_task(
+            archive_file_path: Path, metadata: ArchiveMetadata, lrr_host: str, archive_file_name: str, lrr_api_key: str
+    ):
         async with semaphore:
             return await async_upload_archive_to_server(archive_file_path, metadata, lrr_host, archive_file_name=archive_file_name, lrr_api_key=lrr_api_key)
     tasks = [

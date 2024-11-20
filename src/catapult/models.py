@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 from typing import List
 
 class ArchiveValidateUploadStatus(Enum):
@@ -29,20 +30,20 @@ class ArchiveMetadata:
 
 class ArchiveUploadRequest:
 
-    def __init__(self, archive_file_path: str, archive_file_name: str, metadata: ArchiveMetadata):
+    def __init__(self, archive_file_path: Path, archive_file_name: str, metadata: ArchiveMetadata):
         self.archive_file_path = archive_file_path
         self.archive_file_name = archive_file_name
         self.metadata = metadata
 
 class ArchiveValidateResponse:
     
-    archive_file_path: str
+    archive_file_path: Path
     status_code: ArchiveValidateUploadStatus
     message: str
 
 class ArchiveUploadResponse:
 
-    archive_file_path: str
+    archive_file_path: Path
     status_code: ArchiveValidateUploadStatus
     message: str
 
