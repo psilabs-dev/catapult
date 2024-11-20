@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union, overload
 
 from catapult.connections import common
 from catapult.cache import archive_hash_exists, insert_archive_hash
@@ -80,49 +80,66 @@ async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retr
             else:
                 raise e
 
-async def async_validate_archive(
-        archive_file_path: Path
-) -> ArchiveValidateResponse:
+@overload
+async def async_validate_archive(archive: Path) -> ArchiveValidateResponse:
+    ...
+
+@overload
+async def async_validate_archive(archive: str) -> ArchiveValidateResponse:
+    ...
+
+async def async_validate_archive(archive: Union[Path, str]) -> ArchiveValidateResponse:
     """
     Validates that an Archive can be uploaded.
     """
-    validate_response = ArchiveValidateResponse()
-    validate_response.archive_file_path = archive_file_path
-    validate_response.message = ""
+    if isinstance(archive, str):
+        archive = Path(archive)
+    if isinstance(archive, Path):
+        validate_response = ArchiveValidateResponse()
+        validate_response.archive_file_path = archive
+        validate_response.message = ""
 
-    # check if archive exists
-    if not archive_file_path.exists:
-        validate_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
-        return validate_response
-    
-    # check if extension is exists and valid
-    ext = archive_file_path.suffix
-    if not ext:
-        validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
-        validate_response.message = "No file extension."
-        return validate_response
-    if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
-        validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
-        validate_response.message = f"Invalid extension: \"{ext}\""
-        return validate_response
+        # check if archive exists
+        if not archive.exists:
+            validate_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
+            return validate_response
 
-    # check if file signature is valid.
-    signature = get_signature_hex(archive_file_path)
-    is_allowed_mime = is_valid_signature_hex(signature)
-    if not is_allowed_mime:
-        validate_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
-        validate_response.message = f"Invalid signature: {signature}"
-        return validate_response
+        # check if archive is file
+        if not archive.is_file():
+            validate_response.status_code = ArchiveValidateUploadStatus.NOT_A_FILE
+            validate_response.message = f"Not a file: {archive.absolute()}"
+            return validate_response
 
-    # check if archive does not contain corrupted data
-    if archive_contains_corrupted_image(archive_file_path):
-        validate_response.status_code = ArchiveValidateUploadStatus.CONTAINS_CORRUPTED_IMAGE
-        validate_response.message = "Archive contains corrupted image"
+        # check if extension is exists and valid
+        ext = archive.suffix
+        if not ext:
+            validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
+            validate_response.message = "No file extension."
+            return validate_response
+        if ext[1:] not in ALLOWED_LRR_EXTENSIONS:
+            validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
+            validate_response.message = f"Invalid extension: \"{ext}\""
+            return validate_response
+
+        # check if file signature is valid.
+        signature = get_signature_hex(archive)
+        is_allowed_mime = is_valid_signature_hex(signature)
+        if not is_allowed_mime:
+            validate_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
+            validate_response.message = f"Invalid signature: {signature}"
+            return validate_response
+
+        # check if archive does not contain corrupted data
+        if archive_contains_corrupted_image(archive):
+            validate_response.status_code = ArchiveValidateUploadStatus.CONTAINS_CORRUPTED_IMAGE
+            validate_response.message = "Archive contains corrupted image"
+            return validate_response
+
+        validate_response.status_code = ArchiveValidateUploadStatus.SUCCESS
+        validate_response.message = "success"
         return validate_response
-    
-    validate_response.status_code = ArchiveValidateUploadStatus.SUCCESS
-    validate_response.message = "success"
-    return validate_response
+    else:
+        raise TypeError(f"Unsupported file type: {type(archive)}")
 
 async def async_upload_archive_to_server(
         archive_file_path: Path,

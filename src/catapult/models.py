@@ -11,6 +11,7 @@ class ArchiveValidateUploadStatus(Enum):
     INVALID_MIME_TYPE = 12
     INVALID_EXTENSION = 13
     CONTAINS_CORRUPTED_IMAGE = 14
+    NOT_A_FILE = 15
 
     # server response
     NETWORK_FAILURE = 20
