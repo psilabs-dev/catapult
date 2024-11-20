@@ -8,7 +8,7 @@ from .cache import drop_cache_table
 from .configuration import config
 from .controller import start_folder_upload_process, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
 from .models import ArchiveMetadata, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
-from .utils import get_version, mask_string, lrr_build_auth
+from .utils import get_version, mask_string
 
 def __configure(args):
     # create configuration directory.
@@ -39,16 +39,8 @@ def __reset_cache():
 def __check(args):
     arg_lrr_host = args.lrr_host
     arg_lrr_api_key = args.lrr_api_key
-    
-    headers = dict()
-    response = asyncio.run(run_lrr_connection_test(config.lrr_host, lrr_api_key=config.lrr_api_key))
-    status_code = response.status
-    if status_code == 200:
-        print('success')
-        return 0
-    else:
-        print("fail")
-        return 1
+    is_connected = asyncio.run(run_lrr_connection_test(config.lrr_host, lrr_api_key=config.lrr_api_key))
+    print(is_connected)
 
 def __validate(args):
     file_path = args.filepath
@@ -72,10 +64,7 @@ def __upload(args):
         summary=summary,
         category_id=category_id
     )
-    headers = dict()
-    if lrr_api_key:
-        headers["Authorization"] = lrr_build_auth(lrr_api_key)
-    response = asyncio.run(async_upload_archive_to_server(file_path, metadata, lrr_host, headers=headers))
+    response = asyncio.run(async_upload_archive_to_server(file_path, metadata, lrr_host, lrr_api_key=lrr_api_key))
     status_code = response.status_code
     if status_code == ArchiveValidateUploadStatus.SUCCESS:
         print(f"Uploaded {file_path} to server.")

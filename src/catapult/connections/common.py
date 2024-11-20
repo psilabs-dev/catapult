@@ -13,7 +13,7 @@ def build_upload_requests(contents_directory: str) -> List[ArchiveUploadRequest]
     upload_requests = list()
 
     for archive_file_path in archive_file_path_list:
-        archive_file_name = Path(archive_file_path).name
+        archive_file_name = archive_file_path.name
         metadata = ArchiveMetadata()
         upload_request = ArchiveUploadRequest(archive_file_path, archive_file_name, metadata)
         upload_requests.append(upload_request)

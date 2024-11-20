@@ -1,51 +1,49 @@
 import aiohttp
+import aiohttp.client_exceptions
 import asyncio
 import hashlib
 import logging
-import os
+from pathlib import Path
 from typing import Dict, List
 
-import aiohttp.client_exceptions
-
 from catapult.connections import common
-from catapult.constants import ALLOWED_LRR_EXTENSIONS, ALLOWED_SIGNATURES
 from catapult.cache import archive_hash_exists, insert_archive_hash
+from catapult.lanraragi.client import LRRClient
+from catapult.lanraragi.constants import ALLOWED_LRR_EXTENSIONS
+from catapult.lanraragi.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
-from catapult.utils import calculate_sha1, lrr_build_auth, lrr_compute_id, archive_contains_corrupted_image
+from catapult.utils import archive_contains_corrupted_image
 
 logger = logging.getLogger(__name__)
 
 async def __archive_id_exists(
         archive_id: str,
         lrr_host: str,
-        headers: dict,
+        lrr_api_key: str=None,
         max_retries: int=3,
         use_cache: bool=True,
 ) -> bool:
     """
     Return True if Archive ID exists in server.
     """
-    url = f"{lrr_host}/api/archives/{archive_id}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url=url, headers=headers) as response:
-            data = await response.json()
-            return 'arcid' in data
-
-def __get_signature(archive_file_path: str) -> str:
-    with open(archive_file_path, 'rb') as fb:
-        signature = fb.read(8).hex()
-        return signature
-
-def __is_valid_signature(signature: str) -> bool:
-    is_allowed_mime = False
-    for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.strip().startswith(allowed_signature.lower().replace(' ', '')):
-            is_allowed_mime = True
-    return is_allowed_mime
+    client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
+    retry_count = 0
+    while True:
+        try:
+            response = await client.get_archive_metadata(archive_id)
+            return hasattr(response, 'arcid')
+        except aiohttp.client_exceptions.ClientConnectionError as e:
+            if retry_count < max_retries or max_retries < 0:
+                time_to_sleep = 2 ** (retry_count + 1)
+                logger.error(f"Connection error occurred (retrying in {time_to_sleep}s); is the server online?")
+                await asyncio.sleep(time_to_sleep)
+                retry_count += 1
+            else:
+                raise e
 
 async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retries: int=3):
     """
-    Test connection to LANraragi server.
+    Test (write) connection to LANraragi server.
 
     Parameters
     ----------
@@ -58,9 +56,8 @@ async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retr
 
     Returns
     -------
-    Response
-        Returns the following status codes.
-        - 200 success
+    bool
+        True if connection is successful, False otherwise
         
     Raises
     ------
@@ -68,20 +65,23 @@ async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retr
         Cannot reach LANraragi server, SSL certificate invalid, or general connection error.
     Timeout
     """
+    client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
     retry_count = 0
-    url = f"{lrr_host}/api/info"
-
-    headers = dict()
-    if lrr_api_key:
-        auth = lrr_build_auth(lrr_api_key)
-        headers["Authorization"] = auth
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url=url, headers=headers) as response:
-            return response
+    while True:
+        try:
+            response = await client.get_shinobu_status()
+            return response.status_code == 200
+        except aiohttp.client_exceptions.ClientConnectionError as e:
+            if retry_count < max_retries or max_retries < 0:
+                time_to_sleep = 2 ** (retry_count + 1)
+                logger.error(f"Connection error occurred (retrying in {time_to_sleep}s); is the server online?")
+                await asyncio.sleep(time_to_sleep)
+                retry_count += 1
+            else:
+                raise e
 
 async def async_validate_archive(
-        archive_file_path: str
+        archive_file_path: Path
 ) -> ArchiveValidateResponse:
     """
     Validates that an Archive can be uploaded.
@@ -91,12 +91,12 @@ async def async_validate_archive(
     validate_response.message = ""
 
     # check if archive exists
-    if not os.path.exists(archive_file_path):
+    if not archive_file_path.exists:
         validate_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
         return validate_response
     
     # check if extension is exists and valid
-    ext = os.path.splitext(archive_file_path)[1]
+    ext = archive_file_path.suffix
     if not ext:
         validate_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
         validate_response.message = "No file extension."
@@ -107,8 +107,8 @@ async def async_validate_archive(
         return validate_response
 
     # check if file signature is valid.
-    signature = __get_signature(archive_file_path)
-    is_allowed_mime = __is_valid_signature(signature)
+    signature = get_signature_hex(archive_file_path)
+    is_allowed_mime = is_valid_signature_hex(signature)
     if not is_allowed_mime:
         validate_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
         validate_response.message = f"Invalid signature: {signature}"
@@ -125,11 +125,11 @@ async def async_validate_archive(
     return validate_response
 
 async def async_upload_archive_to_server(
-        archive_file_path: str,
+        archive_file_path: Path,
         metadata: ArchiveMetadata,
         lrr_host: str,
         archive_file_name: str=None,
-        headers: Dict[str, str]=None,
+        lrr_api_key: str=None,
         max_retries: int=3,
         use_cache: bool=True,
 ) -> ArchiveUploadResponse:
@@ -142,7 +142,7 @@ async def async_upload_archive_to_server(
 
     Parameters
     ----------
-    archive_file_path : str
+    archive_file_path : Path
         Full path to an archive file. File must exist and be a valid file type.
     metadata : ArchiveMetadata
         Archive metadata.
@@ -172,16 +172,17 @@ async def async_upload_archive_to_server(
     upload_response = ArchiveUploadResponse()
     upload_response.archive_file_path = archive_file_path
     upload_response.message = ""
-    archive_file_name = archive_file_name if archive_file_name else os.path.basename(archive_file_path)
-    archive_md5 = hashlib.md5(archive_file_path.encode('utf-8')).hexdigest()
+    archive_file_name = archive_file_name if archive_file_name else archive_file_path.name
+    archive_md5 = hashlib.md5(str(archive_file_path).encode('utf-8')).hexdigest()
+    client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
 
     # check if archive exists
-    if not os.path.exists(archive_file_path):
+    if not archive_file_path.exists():
         upload_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
         return upload_response
 
     # check if extension is exists and valid
-    ext = os.path.splitext(archive_file_path)[1]
+    ext = archive_file_path.suffix
     if not ext:
         upload_response.status_code = ArchiveValidateUploadStatus.INVALID_EXTENSION
         upload_response.message = "No file extension."
@@ -201,16 +202,16 @@ async def async_upload_archive_to_server(
             return upload_response
 
     # check if file signature is valid.
-    signature = __get_signature(archive_file_path)
-    is_allowed_mime = __is_valid_signature(signature)
+    signature = get_signature_hex(archive_file_path)
+    is_allowed_mime = is_valid_signature_hex(signature)
     if not is_allowed_mime:
         upload_response.status_code = ArchiveValidateUploadStatus.INVALID_MIME_TYPE
         upload_response.message = f"Invalid signature: {signature}"
         return upload_response
 
     # check if archive is duplicate (remotely)
-    archive_id = lrr_compute_id(archive_file_path)
-    archive_is_duplicate = await __archive_id_exists(archive_id, lrr_host, headers=headers)
+    archive_id = compute_archive_id(archive_file_path)
+    archive_is_duplicate = await __archive_id_exists(archive_id, lrr_host, lrr_api_key=lrr_api_key)
     if archive_is_duplicate:
         upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
         upload_response.message = "Duplicate in server"
@@ -221,81 +222,75 @@ async def async_upload_archive_to_server(
     # this is probably something that is done better off on another machine or separate workload...
 
     # upload archive to server
-    url = f"{lrr_host}/api/archives/upload"
-    archive_checksum = calculate_sha1(archive_file_path)
-    
-    async with aiohttp.ClientSession() as session:
-        with open(archive_file_path, 'rb') as fb:
-            files = {'file': (archive_file_name, fb)}
-            form_data = aiohttp.FormData(quote_fields=False)
-            form_data.add_field('file', fb, filename=archive_file_name, content_type='application/octet-stream')
-            form_data.add_field("file_checksum", archive_checksum)
-            if metadata.title:
-                form_data.add_field('title', metadata.title)
-            if metadata.tags:
-                form_data.add_field('tags', metadata.tags)
-            if metadata.summary:
-                form_data.add_field('summary', metadata.summary)
-            if metadata.category_id:
-                form_data.add_field('category_id', metadata.category_id)
-            
-            checksum_mismatch_retry_count = 0
-            connection_error_retry_count = 0
-            while True:
-                try:
-                    async with session.put(url=url, data=form_data, headers=headers) as response:
-                        status_code = response.status
-                        if status_code == 200:
-                            upload_response.status_code = ArchiveValidateUploadStatus.SUCCESS
-                            if use_cache:
-                                await insert_archive_hash(archive_md5)
-                            logger.info(f"Archive uploaded: {archive_file_name}")
-                            return upload_response
-                        elif status_code == 400: # shouldn't happen.
-                            upload_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
-                            return upload_response
-                        elif status_code == 409: # shouldn't happen if checks are done.
-                            upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
-                            upload_response.message = "Duplicate in server"
-                            return upload_response
-                        elif status_code == 415: # shouldn't happen if checks are done beforehand.
-                            upload_response.status_code = ArchiveValidateUploadStatus.UNSUPPORTED_FILE_EXTENSION
-                            upload_response.message = (await response.json())["error"]
-                            return upload_response
-                        elif status_code == 417: # try several times for checksum mismatch.
-                            if checksum_mismatch_retry_count < 3:
-                                checksum_mismatch_retry_count += 1
-                                continue
-                            else:
-                                upload_response.status_code = ArchiveValidateUploadStatus.CHECKSUM_MISMATCH
-                                upload_response.message = (await response.json())["error"]
-                                return upload_response
-                        elif status_code == 422: # probably shouldn't happen.
-                            upload_response.status_code = ArchiveValidateUploadStatus.UNPROCESSABLE_ENTITY
-                            return upload_response
-                        elif status_code == 423: # will happen if upload design is bad.
-                            upload_response.status_code = ArchiveValidateUploadStatus.LOCKED
-                            return upload_response
-                        elif status_code == 500:
-                            upload_response.status_code = ArchiveValidateUploadStatus.INTERNAL_SERVER_ERROR
-                            try:
-                                upload_response.message = (await response.json())["error"]
-                            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
-                                logger.error("An unhandled internal server error has occurred!", content_type_error)
-                                upload_response.message = await response.text()
-                            return upload_response
-                        else:
-                            logger.error(f"Unexpected error occurred with status {status_code}: {response.text}")
-                            upload_response.status_code = ArchiveValidateUploadStatus.FAILURE
-                            upload_response.message = response.text
-                            return response
-                except aiohttp.ClientConnectionError as e:
-                    if connection_error_retry_count < max_retries or max_retries == -1:
-                        time_to_sleep = 2 ** (connection_error_retry_count + 1)
-                        asyncio.sleep(time_to_sleep)
+    with open(archive_file_path, 'rb') as archive_br:
+        archive_checksum = compute_sha1(archive_br)
+        archive_br.seek(0)
+        checksum_mismatch_retry_count = 0
+        connection_error_retry_count = 0
+        while True:
+            try:
+                response = await client.upload_archive(
+                    archive_br, 
+                    archive_file_name, 
+                    archive_checksum=archive_checksum,
+                    title=metadata.title,
+                    tags=metadata.tags,
+                    summary=metadata.summary,
+                    category_id=metadata.category_id
+                )
+                status_code = response.status_code
+                if status_code == 200:
+                    upload_response.status_code = ArchiveValidateUploadStatus.SUCCESS
+                    if use_cache:
+                        await insert_archive_hash(archive_md5)
+                    logger.info(f"Archive uploaded: {archive_file_name}")
+                    return upload_response
+                elif status_code == 400: # shouldn't happen.
+                    upload_response.status_code = ArchiveValidateUploadStatus.FILE_NOT_EXIST
+                    return upload_response
+                elif status_code == 409: # shouldn't happen if checks are done.
+                    upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
+                    upload_response.message = "Duplicate in server"
+                    return upload_response
+                elif status_code == 415: # shouldn't happen if checks are done beforehand.
+                    upload_response.status_code = ArchiveValidateUploadStatus.UNSUPPORTED_FILE_EXTENSION
+                    upload_response.message = response.error
+                    return upload_response
+                elif status_code == 417: # try several times for checksum mismatch.
+                    if checksum_mismatch_retry_count < 3:
+                        checksum_mismatch_retry_count += 1
+                        continue
                     else:
-                        upload_response.status_code = ArchiveValidateUploadStatus.NETWORK_FAILURE
+                        upload_response.status_code = ArchiveValidateUploadStatus.CHECKSUM_MISMATCH
+                        upload_response.message = response.error
                         return upload_response
+                elif status_code == 422: # probably shouldn't happen.
+                    upload_response.status_code = ArchiveValidateUploadStatus.UNPROCESSABLE_ENTITY
+                    return upload_response
+                elif status_code == 423: # will happen if upload design is bad.
+                    upload_response.status_code = ArchiveValidateUploadStatus.LOCKED
+                    return upload_response
+                elif status_code == 500:
+                    upload_response.status_code = ArchiveValidateUploadStatus.INTERNAL_SERVER_ERROR
+                    try:
+                        upload_response.message = response.error
+                    except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                        logger.error("An unhandled internal server error has occurred!", content_type_error)
+                        upload_response.message = await response.text()
+                    return upload_response
+                else:
+                    logger.error(f"Unexpected error occurred with status {status_code}: {response.text}")
+                    upload_response.status_code = ArchiveValidateUploadStatus.FAILURE
+                    upload_response.message = response.error
+                    return response
+            except aiohttp.ClientConnectionError as e:
+                if connection_error_retry_count < max_retries or max_retries == -1:
+                    time_to_sleep = 2 ** (connection_error_retry_count + 1)
+                    logger.error(f"Connection error occurred (retrying in {time_to_sleep}s); is the server online?")
+                    await asyncio.sleep(time_to_sleep)
+                else:
+                    upload_response.status_code = ArchiveValidateUploadStatus.NETWORK_FAILURE
+                    return upload_response
 
 async def upload_multiple_archives_to_server(
         upload_requests: List[ArchiveUploadRequest], lrr_host: str, lrr_api_key: str=None, 
@@ -328,16 +323,14 @@ async def upload_multiple_archives_to_server(
     batch_response = MultiArchiveUploadResponse()
 
     semaphore = asyncio.Semaphore(value=semaphore_value)
-    async def __upload_archive_task(archive_file_path, metadata, lrr_host, archive_file_name, headers):
+    async def __upload_archive_task(
+            archive_file_path: Path, metadata: ArchiveMetadata, lrr_host: str, archive_file_name: str, lrr_api_key: str
+    ):
         async with semaphore:
-            return await async_upload_archive_to_server(archive_file_path, metadata, lrr_host, archive_file_name, headers=headers)
-
-    headers = dict()
-    if lrr_api_key:
-        headers["Authorization"] = lrr_build_auth(lrr_api_key)
+            return await async_upload_archive_to_server(archive_file_path, metadata, lrr_host, archive_file_name=archive_file_name, lrr_api_key=lrr_api_key)
     tasks = [
         asyncio.create_task(
-            __upload_archive_task(upload_request.archive_file_path, upload_request.metadata, lrr_host, upload_request.archive_file_name, headers=headers)
+            __upload_archive_task(upload_request.archive_file_path, upload_request.metadata, lrr_host, upload_request.archive_file_name, lrr_api_key=lrr_api_key)
         ) for upload_request in upload_requests
     ]
     upload_responses: List[ArchiveUploadResponse] = await asyncio.gather(*tasks)

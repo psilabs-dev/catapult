@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 
 from catapult.configuration import config
-from catapult.utils import lrr_compute_id
+from catapult.lanraragi.utils import compute_archive_id
 
 logger = logging.getLogger(__name__)
 
