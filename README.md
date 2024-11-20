@@ -82,12 +82,8 @@ client = LRRClient.default_client()
 
 archive_path = "archive-to-upload.zip"
 archive_name = archive_path
-with open(archive_path, 'rb') as archive_br:
-    response = asyncio.run(client.upload_archive(
-        archive_br, 
-        archive_name, 
-    ))
 
+response = asyncio.run(client.upload_archive(archive_path, archive_name))
 print(response)
 ```
 
