@@ -236,8 +236,9 @@ async def async_upload_archive_to_server(
 
     # upload archive to server
     archive_checksum = compute_sha1(archive_file_path)
-    
     with open(archive_file_path, 'rb') as archive_br:
+        # archive_checksum = compute_sha1(archive_br)
+        # archive_br.seek(0)
         checksum_mismatch_retry_count = 0
         connection_error_retry_count = 0
         while True:

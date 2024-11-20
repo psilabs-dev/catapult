@@ -1,19 +1,38 @@
 import base64
 import hashlib
+import io
+from pathlib import Path
+from typing import overload, Union
 
 def build_auth_header(lrr_api_key: str) -> str:
     bearer = base64.b64encode(lrr_api_key.encode(encoding='utf-8')).decode('utf-8')
     return f"Bearer {bearer}"
 
-def compute_sha1(file_path: str):
-    """
-    Calculate SHA1 of entire file. Used for in-transit file integrity validation.
-    """
+@overload
+def compute_sha1(br: io.IOBase) -> str:
+    ...
+
+@overload
+def compute_sha1(file_path: Path) -> str:
+    ...
+
+@overload
+def compute_sha1(file_path: str) -> str:
+    ...
+
+def compute_sha1(file: Union[io.IOBase, Path, str]) -> str:
     sha1 = hashlib.sha1()
-    with open(file_path, 'rb') as fb:
-        while chunk := fb.read(8192):
+    if isinstance(file, io.IOBase):
+        while chunk := file.read(8192):
             sha1.update(chunk)
-    return sha1.hexdigest()
+        return sha1.hexdigest()
+    elif isinstance(file, Path) or isinstance(file, str):
+        with open(file, 'rb') as file_br:
+            while chunk := file_br.read(8192):
+                sha1.update(chunk)
+            return sha1.hexdigest()
+    else:
+        raise TypeError(f"Unsupported file type {type(file)}")
 
 def compute_archive_id(file_path: str) -> str:
     """
