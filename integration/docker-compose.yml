@@ -25,16 +25,3 @@ services:
         condition: service_healthy
     profiles:
       - server
-
-  rabbitmq:
-    image: rabbitmq:4.0-management
-    container_name: rabbitmq
-    restart: unless-stopped
-    ports:
-      - 5672:5672
-      - 15672:15672
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      start_period: 10s
-    profiles:
-      - worker
