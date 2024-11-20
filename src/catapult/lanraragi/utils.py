@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 from typing import overload, Union
 
-from catapult.constants import ALLOWED_SIGNATURES
+from .constants import ALLOWED_SIGNATURES
 
 def build_auth_header(lrr_api_key: str) -> str:
     bearer = base64.b64encode(lrr_api_key.encode(encoding='utf-8')).decode('utf-8')
@@ -86,6 +86,6 @@ def is_valid_signature_hex(signature: str) -> bool:
     """
     is_allowed_mime = False
     for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.strip().startswith(allowed_signature.lower().replace(' ', '')):
+        if signature.strip().startswith(allowed_signature):
             is_allowed_mime = True
     return is_allowed_mime
