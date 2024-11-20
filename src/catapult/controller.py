@@ -26,7 +26,7 @@ async def __archive_id_exists(
     """
     Return True if Archive ID exists in server.
     """
-    client = LRRClient(lrr_host, lrr_api_key=lrr_api_key)
+    client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
     retry_count = 0
     while True:
         try:
@@ -65,7 +65,7 @@ async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retr
         Cannot reach LANraragi server, SSL certificate invalid, or general connection error.
     Timeout
     """
-    client = LRRClient(lrr_host, lrr_api_key=lrr_api_key)
+    client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
     retry_count = 0
     while True:
         try:
@@ -174,7 +174,7 @@ async def async_upload_archive_to_server(
     upload_response.message = ""
     archive_file_name = archive_file_name if archive_file_name else archive_file_path.name
     archive_md5 = hashlib.md5(str(archive_file_path).encode('utf-8')).hexdigest()
-    client = LRRClient(lrr_host, lrr_api_key=lrr_api_key)
+    client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
 
     # check if archive exists
     if not archive_file_path.exists():

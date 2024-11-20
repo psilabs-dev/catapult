@@ -72,6 +72,25 @@ Application-specific environment variables:
 Multi-upload from folder:
 - `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.
 
+## Client Library
+Example of uploading an Archive using `LRRClient`:
+```python
+import asyncio
+from catapult.lanraragi import LRRClient
+
+client = LRRClient.default_client()
+
+archive_path = "archive-to-upload.zip"
+archive_name = archive_path
+with open(archive_path, 'rb') as archive_br:
+    response = asyncio.run(client.upload_archive(
+        archive_br, 
+        archive_name, 
+    ))
+
+print(response)
+```
+
 ## Development
 
 Run integration tests against a LANraragi docker instance. This setup script will create an LRR instance, inject it with an API key, and apply permissions.

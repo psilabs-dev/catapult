@@ -19,9 +19,11 @@ class LRRClient:
 
     def __init__(
             self,
-            lrr_host: str,
+            lrr_host: str=None,
             lrr_api_key: str=None,
     ):
+        if not lrr_host:
+            lrr_host = "http://localhost:3000"
         self.lrr_host = lrr_host
 
         if not self.lrr_host:
@@ -31,6 +33,14 @@ class LRRClient:
         if lrr_api_key:
             lrr_headers["Authorization"] = build_auth_header(lrr_api_key)
         self.headers = lrr_headers
+
+    @classmethod
+    def default_client(cls) -> "LRRClient":
+        """
+        Return default LANraragi client based on catapult credentials.
+        """
+        from catapult.configuration import config
+        return LRRClient(lrr_host=config.lrr_host, lrr_api_key=config.lrr_api_key)
 
     # ---- START ARCHIVE API ----
     # https://sugoi.gitbook.io/lanraragi/api-documentation/archive-api
