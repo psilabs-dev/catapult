@@ -36,7 +36,7 @@ async def __archive_id_exists(
             if retry_count < max_retries or max_retries < 0:
                 time_to_sleep = 2 ** (retry_count + 1)
                 logger.error(f"Connection error occurred (retrying in {time_to_sleep}s); is the server online?")
-                await asyncio.sleep(5)
+                await asyncio.sleep(time_to_sleep)
                 retry_count += 1
             else:
                 raise e
@@ -75,7 +75,7 @@ async def run_lrr_connection_test(lrr_host: str, lrr_api_key: str=None, max_retr
             if retry_count < max_retries or max_retries < 0:
                 time_to_sleep = 2 ** (retry_count + 1)
                 logger.error(f"Connection error occurred (retrying in {time_to_sleep}s); is the server online?")
-                await asyncio.sleep(5)
+                await asyncio.sleep(time_to_sleep)
                 retry_count += 1
             else:
                 raise e
