@@ -366,6 +366,14 @@ async def upload_archives_from_folders(
     ----------
     folders : List[Path]
         A list of folder Paths that contain Archives to upload.
+    lrr_host : str
+        Absolute URL of the LANraragi host (e.g. `http://localhost:3000` or `https://lanraragi`).
+    lrr_api_key : str, optional
+        API key for LANraragi server. Defaults to no key.
+    use_cache : int, optional
+        Use cache for Archive-to-server deduplication (Default: True).
+    metadata_client : MetadataClient, optional
+        Client/interface for a metadata/content downloader.
     """
     upload_requests = []
     for folder in folders:

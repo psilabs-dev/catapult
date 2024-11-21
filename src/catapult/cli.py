@@ -107,7 +107,7 @@ def __multi_upload(args):
         if not db:
             db = config.multi_upload_nhentai_archivist_db
         if not folders:
-            folders = config.multi_upload_nhentai_archivist_content_dir
+            folders = config.multi_upload_nhentai_archivist_folders
         if not db:
             raise TypeError("Nhentai Archivist database config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_DB)")
         if not folders:

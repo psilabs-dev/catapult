@@ -1,6 +1,6 @@
 import abc
 from pathlib import Path
-from typing import Union
+from typing import List, Union
 import aiosqlite
 
 from catapult.models import ArchiveMetadata
@@ -112,8 +112,8 @@ class NhentaiArchivistMetadataClient(MetadataClient):
             assert ',' not in item, f'Item {item} contains comma.'
 
         final_tag_string = ",".join(tag_list)
-
-        metadata = ArchiveMetadata(title=title, tags=final_tag_string)
+        metadata.title = title
+        metadata.tags = final_tag_string
         return metadata
 
 class PixivUtil2MetadataClient(MetadataClient):
@@ -121,18 +121,65 @@ class PixivUtil2MetadataClient(MetadataClient):
     Metadata client for [PixivUtil2](https://github.com/Nandaka/PixivUtil2.git)
     """
     
-    def __init__(self, db: Path) -> None:
+    def __init__(self, db: Path, allowed_translation_types: List[str]=None) -> None:
         self.db = db
+        if not allowed_translation_types:
+            allowed_translation_types = ["en"]
+        self.allowed_translation_types = allowed_translation_types
 
     @classmethod
     def default_client(cls) -> MetadataClient:
-        raise NotImplementedError("No default client for PixivUtil2!")
+        from catapult.configuration import config
+        return PixivUtil2MetadataClient(config.multi_upload_pixivutil2_db)
 
     async def get_id_from_path(self, file_path: str | Path) -> str:
         raise NotImplementedError("PixivUtil2 id fetcher is not implemented!")
 
     async def get_metadata_from_id(self, pixiv_id: int) -> ArchiveMetadata:
         """
-        TODO: Get metadata from PixivUtil2 database, given the Pixiv illust ID.
+        Get metadata from PixivUtil2 database, given the Pixiv illust ID.
         """
-        raise NotImplementedError("PixivUtil2 metadata fetcher is not implemented!")
+        metadata = ArchiveMetadata()
+        async with aiosqlite.connect(self.db) as conn, conn.cursor() as cursor:
+            titles = await (await cursor.execute("SELECT title FROM pixiv_master_image WHERE image_id=?", (pixiv_id,))).fetchone()
+            title = titles[0] if titles else None
+
+            # get pixiv artist
+            artists = await (await cursor.execute('''
+                                                  SELECT pixiv_master_member.member_id, pixiv_master_member.name 
+                                                  FROM pixiv_master_member 
+                                                  JOIN pixiv_master_image ON pixiv_master_member.member_id = pixiv_master_image.member_id
+                                                  WHERE pixiv_master_image.image_id = ?
+            ''', (pixiv_id,))).fetchall()
+
+            # get tags (and tag translations)
+            original_tags = await (await cursor.execute('SELECT tag_id FROM pixiv_image_to_tag WHERE image_id = ?', (pixiv_id,))).fetchall()
+            all_tags = []
+            for original_tag in original_tags:
+                original_tag_id = original_tag[0]
+                all_tags.append(original_tag_id)
+                translations = await (await cursor.execute('SELECT translation_type, translation FROM pixiv_tag_translation WHERE tag_id = ?', (original_tag_id,))).fetchall()
+                for translation in translations:
+                    translation_type = translation[0]
+                    if translation_type in self.allowed_translation_types:
+                        all_tags.append(translation[1])
+
+            # get summary
+            summary = await (await cursor.execute('SELECT caption from pixiv_master_image WHERE image_id = ?', (pixiv_id,))).fetchall()
+
+            # assemble tags
+            tag_list = all_tags # start with all tags.
+            for artist in artists:
+                tag_list.append(f"artist:{artist[1]}")
+                tag_list.append(f"pixiv_user_id:{artist[0]}")
+            tag_list.append(f"source:https://pixiv.net/artworks/{pixiv_id}")
+            # validate tag list
+            for item in tag_list:
+                assert ',' not in item, f'Item {item} contains comma.'
+
+        final_tag_string = ",".join(tag_list)
+        metadata.title = title
+        metadata.tags = final_tag_string
+        if summary:
+            metadata.summary = summary
+        return metadata
