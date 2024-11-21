@@ -162,7 +162,10 @@ class PixivUtil2MetadataClient(MetadataClient):
                 for translation in translations:
                     translation_type = translation[0]
                     if translation_type in self.allowed_translation_types:
-                        all_tags.append(translation[1])
+                        # handle tag translations.
+                        # some translations contain commas, which need to be either ignored or processed.
+                        translated_tag_id = translation[1].replace(',', '')
+                        all_tags.append(translated_tag_id)
 
             # get summary
             summary = await (await cursor.execute('SELECT caption from pixiv_master_image WHERE image_id = ?', (pixiv_id,))).fetchall()

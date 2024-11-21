@@ -32,7 +32,5 @@ def flat_folder_to_zip(src_folder: Union[str, Path], trg_zip: Union[str, Path]):
                 continue
             signature = get_signature_hex(path)
             if not is_valid_signature_hex(signature, allowed_signatures=IMAGE_SIGNATURES):
-                print(f"Is not valid signature: {signature} not in {IMAGE_SIGNATURES}")
                 continue
             zip_obj.write(path, filename)
-            print(f"Wrote {path}")
