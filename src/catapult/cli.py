@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from time import perf_counter
 
+from catapult.metadata import NhentaiArchivistMetadataClient
+
 from .cache import drop_cache_table
 from .configuration import config
 from .controller import upload_archives_from_folders, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
@@ -88,7 +90,7 @@ def __multi_upload(args):
 
     start_time = perf_counter()
     if plugin_command == 'from-folder':
-        folders = args.folder
+        folders = args.folders
 
         if not folders:
             folders = config.multi_upload_folder_dir
@@ -98,7 +100,30 @@ def __multi_upload(args):
         for folder in folders:
             if not folder.exists():
                 raise FileNotFoundError(f"Folder not found: {folder}")
-        response = upload_archives_from_folders(folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache)
+        response = asyncio.run(upload_archives_from_folders(folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache))
+    elif plugin_command == 'from-nhentai-archivist':
+        db = args.db
+        folders = args.folders
+        if not db:
+            db = config.multi_upload_nhentai_archivist_db
+        if not folders:
+            folders = config.multi_upload_nhentai_archivist_content_dir
+        if not db:
+            raise TypeError("Nhentai Archivist database config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_DB)")
+        if not folders:
+            raise TypeError("Nhentai Archivist folder config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS)")
+        folders = [Path(directory) for directory in folders.split(";")]
+        for folder in folders:
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder not found: {folder}")
+        nhentai_archivist_client = NhentaiArchivistMetadataClient(db)
+        response = asyncio.run(upload_archives_from_folders(
+            folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache, metadata_client=nhentai_archivist_client
+        ))
+    elif plugin_command == 'from-pixiv':
+        raise NotImplementedError("Pixiv upload with metadata injection not implemented!")
+    else:
+        raise NotImplementedError(f"Unsupported plugin: {plugin_command}")
 
     total_time = perf_counter() - start_time
     if response:
@@ -152,9 +177,12 @@ def main():
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
     mu_subparsers = multiupload_subparser.add_subparsers(dest='plugin_command')
     mu_folder_parser = mu_subparsers.add_parser('from-folder', help="Upload archives from folder.")
-    mu_folder_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
+    mu_folder_parser.add_argument('--folders', type=str, help='Path to nhentai archivist contents folder.')
+    mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
+    mu_nh_parser.add_argument('--db', type=str, help='Path to nhentai archivist database.')
+    mu_nh_parser.add_argument('--folders', type=str, help='Path to nhentai archivist contents folder.')
 
-    for plugin_parser in [mu_folder_parser]:
+    for plugin_parser in [mu_folder_parser, mu_nh_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
         plugin_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
         plugin_parser.add_argument('--no-cache', action='store_true', help='Disable cache when remove duplicates.')

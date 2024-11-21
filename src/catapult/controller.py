@@ -10,6 +10,7 @@ from catapult.cache import archive_hash_exists, insert_archive_hash
 from catapult.lanraragi.client import LRRClient
 from catapult.lanraragi.constants import ALLOWED_LRR_EXTENSIONS
 from catapult.lanraragi.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
+from catapult.metadata import MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
 from catapult.utils.archive import find_all_archives
@@ -355,7 +356,9 @@ async def upload_multiple_archives_to_server(
     batch_response.upload_responses = upload_responses
     return batch_response
 
-def upload_archives_from_folders(folders: List[Path], lrr_host: str, lrr_api_key: str=None, use_cache: bool=True):
+async def upload_archives_from_folders(
+        folders: List[Path], lrr_host: str, lrr_api_key: str=None, use_cache: bool=True, metadata_client: MetadataClient=None,
+):
     """
     Upload Archives found in a list of Folder Paths.
 
@@ -368,9 +371,14 @@ def upload_archives_from_folders(folders: List[Path], lrr_host: str, lrr_api_key
     for folder in folders:
         archives_from_folder = find_all_archives(folder)
         for archive_path in archives_from_folder:
-            upload_request = ArchiveUploadRequest(archive_path, archive_path.name, ArchiveMetadata())
+            if metadata_client:
+                archive_id = metadata_client.get_id_from_path(archive_path)
+                metadata = await metadata_client.get_metadata_from_id(archive_id)
+            else:
+                metadata = ArchiveMetadata()
+            upload_request = ArchiveUploadRequest(archive_path, archive_path.name, metadata)
             upload_requests.append(upload_request)
-    batch_upload_response = asyncio.run(upload_multiple_archives_to_server(
+    batch_upload_response = await upload_multiple_archives_to_server(
         upload_requests, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
-    ))
+    )
     return batch_upload_response

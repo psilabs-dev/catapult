@@ -1,5 +1,6 @@
 import abc
 from pathlib import Path
+from typing import Union
 import aiosqlite
 
 from catapult.models import ArchiveMetadata
@@ -8,6 +9,15 @@ class MetadataClient(abc.ABC):
     """
     Metadata interface for a downloader or metadata server.
     """
+
+    @classmethod
+    @abc.abstractmethod
+    def default_client(cls) -> "MetadataClient":
+        ...
+
+    @abc.abstractmethod
+    def get_id_from_path(self, file_path: Union[str, Path]) -> str:
+        ...
 
     @abc.abstractmethod
     async def get_metadata_from_id(self, *args, **kwargs) -> ArchiveMetadata:
@@ -20,6 +30,21 @@ class NhentaiArchivistMetadataClient(MetadataClient):
 
     def __init__(self, db: Path):
         self.db = db
+
+    @classmethod
+    def default_client(cls) -> MetadataClient:
+        from catapult.configuration import config
+        return NhentaiArchivistMetadataClient(config.multi_upload_nhentai_archivist_db)
+
+    def get_id_from_path(self, file_path: str | Path) -> str:
+        if isinstance(file_path, str):
+            archive_id = file_path.split()[0]
+            return archive_id
+        elif isinstance(file_path, Path):
+            archive_id = file_path.name.split()[0]
+            return archive_id
+        else:
+            raise TypeError(f"Unsupported input: {type(file_path)}") 
 
     async def get_metadata_from_id(self, nhentai_id: str) -> ArchiveMetadata:
         """
@@ -98,6 +123,13 @@ class PixivUtil2MetadataClient(MetadataClient):
     
     def __init__(self, db: Path) -> None:
         self.db = db
+
+    @classmethod
+    def default_client(cls) -> MetadataClient:
+        raise NotImplementedError("No default client for PixivUtil2!")
+
+    async def get_id_from_path(self, file_path: str | Path) -> str:
+        raise NotImplementedError("PixivUtil2 id fetcher is not implemented!")
 
     async def get_metadata_from_id(self, pixiv_id: int) -> ArchiveMetadata:
         """
