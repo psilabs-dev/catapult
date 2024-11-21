@@ -18,9 +18,6 @@ class Configuration:
     lrr_host: str = None
     lrr_api_key: str = None
 
-    # worker-specific config
-    celery_broker_url: str = None
-
     # upload folder-specific config
     multi_upload_folder_dir: str = None
 
