@@ -118,7 +118,8 @@ class LRRClient:
         `PUT /api/archives/upload`
         """
         if isinstance(archive, (Path, str)):
-            with open(archive, 'rb') as archive_br:
+            # use normal blocking open, aiofiles may be too slow.
+            with open(archive, 'rb') as archive_br:  # noqa: ASYNC230
                 return self.upload_archive(
                     archive_br, archive_filename, archive_checksum=archive_checksum, 
                     title=title, tags=tags, summary=summary, category_id=category_id
