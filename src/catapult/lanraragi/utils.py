@@ -2,7 +2,7 @@ import base64
 import hashlib
 import io
 from pathlib import Path
-from typing import overload, Union
+from typing import overload, List, Union
 
 from .constants import ALLOWED_SIGNATURES, NULL_ARCHIVE_ID
 
@@ -80,12 +80,12 @@ def get_signature_hex(archive_path: Union[Path, str]) -> str:
     else:
         raise TypeError(f"Unsupported file type: {type(archive_path)}")
 
-def is_valid_signature_hex(signature: str) -> bool:
+def is_valid_signature_hex(signature: str, allowed_signatures: List[str]=ALLOWED_SIGNATURES) -> bool:
     """
     Check if the hex signature corresponds to a file type supported by LANraragi.
     """
     is_allowed_mime = False
-    for allowed_signature in ALLOWED_SIGNATURES:
-        if signature.strip().startswith(allowed_signature):
+    for allowed_signature in allowed_signatures:
+        if signature.startswith(allowed_signature):
             is_allowed_mime = True
     return is_allowed_mime
