@@ -22,13 +22,14 @@ def flat_folder_to_zip(src_folder: Union[str, Path], trg_zip: Union[str, Path]):
 
     if not src_folder.is_dir():
         raise TypeError(f"Path {src_folder} is not a directory.")
-    with zipfile.ZipFile(trg_zip, 'w') as zip_obj:
+    
+    # create a zip file using a compressing algorithm.
+    with zipfile.ZipFile(trg_zip, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_obj:
         for path in src_folder.iterdir():
             # check if it is an image.
             ext = path.suffix
             filename = path.name
             if not ext:
-                print("No file extension.")
                 continue
             signature = get_signature_hex(path)
             if not is_valid_signature_hex(signature, allowed_signatures=IMAGE_SIGNATURES):
