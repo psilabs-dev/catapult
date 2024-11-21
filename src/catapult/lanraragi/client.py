@@ -1,10 +1,9 @@
-from collections.abc import Iterable
 import io
 import aiohttp
 import aiohttp.client_exceptions
 import logging
 from pathlib import Path
-from typing import overload, List, Union
+from typing import overload, Union
 
 from catapult.lanraragi.models import LanraragiResponse
 from catapult.lanraragi.utils import build_auth_header
@@ -45,6 +44,30 @@ class LRRClient:
 
     # ---- START ARCHIVE API ----
     # https://sugoi.gitbook.io/lanraragi/api-documentation/archive-api
+    async def get_all_archives(self) -> LanraragiResponse:
+        """
+        `GET /api/archives`
+        """
+        url = f"{self.lrr_host}/api/archives"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            response.data = await async_response.json()
+            return response
+
+    async def get_untagged_archives(self) -> LanraragiResponse:
+        """
+        `GET /api/archives/untagged`
+        """
+        url = f"{self.lrr_host}/api/archives/untagged"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            response.data = await async_response.json()
+            return response
+
     async def get_archive_metadata(self, archive_id: str) -> LanraragiResponse:
         """
         `GET /api/archives/:id/metadata`
@@ -56,7 +79,6 @@ class LRRClient:
             response.success = 1 if async_response.status == 200 else 0
             data = await async_response.json()
             try:
-                data = await async_response.json()
                 for key in data:
                     response.__setattr__(key, data[key])
             except aiohttp.client_exceptions.ContentTypeError as content_type_error:
@@ -153,21 +175,10 @@ class LRRClient:
         else:
             raise TypeError(f"Unsupported upload content type (must be Path, str or IOBase): {type(archive)}")
 
-    @overload
     async def update_archive(self, archive_id: str, title: str=None, tags: str=None, summary: str=None):
-        ...
-    
-    @overload
-    async def update_archive(self, archive_id: str, title: str=None, tags: List[str]=None, summary: str=None):
-        ...
-
-    async def update_archive(self, archive_id: str, title: str=None, tags: Union[str, List[str]]=None, summary: str=None):
         """
         `PUT /api/archives/:id/metadata`
         """
-        if isinstance(tags, Iterable):
-            tags = ",".join([tag.strip() for tag in tags])
-        
         if isinstance(tags, str):
             url = f"{self.lrr_host}/api/archives/{archive_id}/metadata"
             response = LanraragiResponse()
@@ -178,7 +189,7 @@ class LRRClient:
                 form_data.add_field('tags', tags)
             if summary:
                 form_data.add_field('summary', summary)
-            async with aiohttp.ClientSession() as session, session.put(url=url, headers=self.headers) as async_response:
+            async with aiohttp.ClientSession() as session, session.put(url=url, headers=self.headers, data=form_data) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
                 try:
@@ -186,7 +197,7 @@ class LRRClient:
                     for key in data:
                         response.__setattr__(key, data[key])
                 except aiohttp.client_exceptions.ContentTypeError as content_type_error:
-                    logger.error("[upload_archive] Failed to update Archive: ", content_type_error)
+                    logger.error("[update_archive] Failed to update Archive: ", content_type_error)
                     response.error = async_response.text
                 return response
         else:
@@ -212,6 +223,72 @@ class LRRClient:
 
     # ---- END ARCHIVE API ----
 
+    # ---- START DATABASE API ----
+    async def clean_database(self) -> LanraragiResponse:
+        """
+        `POST /api/database/clean`
+        """
+        url = f"{self.lrr_host}/api/database/clean"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.post(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            data = await async_response.json()
+            try:
+                for key in data:
+                    response.__setattr__(key, data[key])
+            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                logger.error("[clean_database] Failed to clean database: ", content_type_error)
+            return response
+
+    async def drop_database(self) -> LanraragiResponse:
+        """
+        `POST /api/database/drop`
+        """
+        url = f"{self.lrr_host}/api/database/drop"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.post(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            data = await async_response.json()
+            try:
+                for key in data:
+                    response.__setattr__(key, data[key])
+            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                logger.error("[drop_database] Failed to drop database: ", content_type_error)
+            return response
+
+    async def get_backup(self) -> LanraragiResponse:
+        """
+        `GET /api/database/backup`
+        """
+        url = f"{self.lrr_host}/api/database/backup"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            response.data = await async_response.json()
+            return response
+
+    async def clear_new_all(self) -> LanraragiResponse:
+        """
+        `DELETE /api/database/isnew`
+        """
+        url = f"{self.lrr_host}/api/database/isnew"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.delete(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            data = await async_response.json()
+            try:
+                for key in data:
+                    response.__setattr__(key, data[key])
+            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                logger.error("[clear_new_all] Failed to clear new flag on Archives: ", content_type_error)
+            return response
+
+    # ---- END DATABASE API ----
+
     # ---- START SHINOBU API ----
     # https://sugoi.gitbook.io/lanraragi/api-documentation/shinobu-api
     async def get_shinobu_status(self) -> LanraragiResponse:
@@ -229,6 +306,40 @@ class LRRClient:
                     response.__setattr__(key, data[key])
             except aiohttp.client_exceptions.ContentTypeError as content_type_error:
                 logger.error("[get_shinobu_status] Failed to decode JSON response: ", content_type_error)
+            return response
+
+    async def stop_shinobu(self) -> LanraragiResponse:
+        """
+        `POST /api/shinobu/stop`
+        """
+        url = f"{self.lrr_host}/api/shinobu/stop"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.post(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            try:
+                data = await async_response.json()
+                for key in data:
+                    response.__setattr__(key, data[key])
+            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                logger.error("[shinobu_stop] Failed to stop shinobu: ", content_type_error)
+            return response
+
+    async def restart_shinobu(self) -> LanraragiResponse:
+        """
+        `POST /api/shinobu/restart`
+        """
+        url = f"{self.lrr_host}/api/shinobu/restart"
+        response = LanraragiResponse()
+        async with aiohttp.ClientSession() as session, session.post(url=url, headers=self.headers) as async_response:
+            response.status_code = async_response.status
+            response.success = 1 if async_response.status == 200 else 0
+            try:
+                data = await async_response.json()
+                for key in data:
+                    response.__setattr__(key, data[key])
+            except aiohttp.client_exceptions.ContentTypeError as content_type_error:
+                logger.error("[shinobu_restart] Failed to restart shinobu: ", content_type_error)
             return response
 
     # ---- END SHINOBU API ----
