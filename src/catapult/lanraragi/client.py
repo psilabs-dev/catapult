@@ -177,7 +177,7 @@ class LRRClient:
             if tags:
                 form_data.add_field('tags', tags)
             if summary:
-                form_data.add_field('summar', summary)
+                form_data.add_field('summary', summary)
             async with aiohttp.ClientSession() as session, session.put(url=url, headers=self.headers) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
