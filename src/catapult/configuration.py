@@ -59,7 +59,7 @@ class Configuration:
         self.multi_upload_nhentai_archivist_folders = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_FOLDERS', self.multi_upload_nhentai_archivist_folders)
 
         self.multi_upload_pixivutil2_db = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_DB', self.multi_upload_pixivutil2_db)
-        self.multi_upload_pixivutil2_folders = os.getenv('MULTI_UPLOAD_PIXIVUTIL_FOLDERS', self.multi_upload_pixivutil2_folders)
+        self.multi_upload_pixivutil2_folders = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_FOLDERS', self.multi_upload_pixivutil2_folders)
 
     def save(self):
         """
