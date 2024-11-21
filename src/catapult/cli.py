@@ -1,11 +1,12 @@
 import argparse
 import asyncio
 import logging
+from pathlib import Path
 from time import perf_counter
 
 from .cache import drop_cache_table
 from .configuration import config
-from .controller import start_folder_upload_process, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
+from .controller import upload_archives_from_folders, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
 from .models import ArchiveMetadata, ArchiveValidateUploadStatus
 from .utils import get_version, mask_string
 
@@ -47,7 +48,6 @@ def __check(args):
 
 def __validate(args):
     file_path = args.filepath
-    # print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
     response = asyncio.run(async_validate_archive(file_path))
     print(f"{response.status_code.name} - {response.message}")
 
@@ -88,16 +88,17 @@ def __multi_upload(args):
 
     start_time = perf_counter()
     if plugin_command == 'from-folder':
-        contents_directory = args.folder
+        folders = args.folder
 
-        if not contents_directory:
-            contents_directory = config.multi_upload_folder_dir
-
-        assert contents_directory, "no contents directory"
-
-        response = start_folder_upload_process(
-            contents_directory, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
-        )
+        if not folders:
+            folders = config.multi_upload_folder_dir
+        if not folders:
+            raise TypeError("Multi upload folder config cannot be empty (set MULTI_UPLOAD_FOLDER environment).")
+        folders = [Path(directory) for directory in folders.split(";")]
+        for folder in folders:
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder not found: {folder}")
+        response = upload_archives_from_folders(folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache)
 
     total_time = perf_counter() - start_time
     if response:
