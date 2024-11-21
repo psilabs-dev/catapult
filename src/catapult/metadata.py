@@ -27,39 +27,39 @@ class NhentaiArchivistMetadataClient(MetadataClient):
         """
         metadata = ArchiveMetadata()
         async with aiosqlite.connect(self.db) as conn, conn.cursor() as cursor:
-            titles = (await cursor.execute("SELECT title_pretty FROM Hentai WHERE id=?", (nhentai_id,))).fetchone()
+            titles = await (await cursor.execute("SELECT title_pretty FROM Hentai WHERE id=?", (nhentai_id,))).fetchone()
             title = titles[0] if titles else None
-            groups = (await cursor.execute('''
+            groups = await (await cursor.execute('''
                 WITH groups AS (SELECT * FROM tag WHERE type = ?)
                 SELECT groups.name FROM hentai_tag JOIN groups ON hentai_tag.tag_id = groups.id
                 WHERE hentai_tag.hentai_id = ?
             ''', ('group', nhentai_id))).fetchall()
-            artists = (await cursor.execute('''
+            artists = await (await cursor.execute('''
                 WITH artists AS (SELECT * FROM tag WHERE type = ?)
                 SELECT artists.name FROM hentai_tag JOIN artists ON hentai_tag.tag_id = artists.id
                 WHERE hentai_tag.hentai_id = ?
             ''', ('artist', nhentai_id))).fetchall()
-            tags = (await cursor.execute('''
+            tags = await (await cursor.execute('''
                 WITH true_tags AS (SELECT * FROM tag WHERE type = ?)
                 SELECT true_tags.name FROM hentai_tag JOIN true_tags ON hentai_tag.tag_id = true_tags.id
                 WHERE hentai_tag.hentai_id = ?
             ''', ('tag', nhentai_id))).fetchall()
-            characters = (await cursor.execute('''
+            characters = await (await cursor.execute('''
                 WITH characters AS (SELECT * FROM tag WHERE type = ?)
                 SELECT characters.name FROM hentai_tag JOIN characters ON hentai_tag.tag_id = characters.id
                 WHERE hentai_tag.hentai_id = ?
             ''', ('character', nhentai_id))).fetchall()
-            parodies = (await cursor.execute('''
+            parodies = await (await cursor.execute('''
                 WITH parodies AS (SELECT * FROM tag WHERE type = ?)
                 SELECT parodies.name FROM hentai_tag JOIN parodies ON hentai_tag.tag_id = parodies.id
                 WHERE hentai_tag.hentai_id = ?
             ''', ('parody', nhentai_id))).fetchall()
-            languages = (await cursor.execute('''
+            languages = await (await cursor.execute('''
                 WITH languages AS (SELECT * FROM tag WHERE type = ?)
                 SELECT languages.name FROM hentai_tag JOIN languages ON hentai_tag.tag_id = languages.id
                 WHERE hentai_tag.hentai_id = ?
             ''', ('language', nhentai_id))).fetchall()
-            categories = (await cursor.execute('''
+            categories = await (await cursor.execute('''
                 WITH categories AS (SELECT * FROM tag WHERE type = ?)
                 SELECT categories.name FROM hentai_tag JOIN categories ON hentai_tag.tag_id = categories.id
                 WHERE hentai_tag.hentai_id = ?
