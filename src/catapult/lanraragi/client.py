@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import overload, Union
 
 from catapult.lanraragi.models import LanraragiResponse
-from catapult.lanraragi.utils import compute_sha1, build_auth_header
+from catapult.lanraragi.utils import build_auth_header
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class LRRClient:
         if not self.lrr_host:
             raise ValueError("LRR host cannot be empty.")
 
-        lrr_headers = dict()
+        lrr_headers = {}
         if lrr_api_key:
             lrr_headers["Authorization"] = build_auth_header(lrr_api_key)
         self.headers = lrr_headers
@@ -50,8 +50,7 @@ class LRRClient:
         """
         url = f"{self.lrr_host}/api/archives/{archive_id}/metadata"
         response = LanraragiResponse()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=self.headers) as async_response:
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
                 data = await async_response.json()
@@ -69,8 +68,7 @@ class LRRClient:
         """
         url = f"{self.lrr_host}/api/archives/{archive_id}/download"
         response = LanraragiResponse()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=self.headers) as async_response:
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
                 buffer = io.BytesIO()
@@ -119,9 +117,9 @@ class LRRClient:
         """
         `PUT /api/archives/upload`
         """
-        if isinstance(archive, Path) or isinstance(archive, str):
+        if isinstance(archive, (Path, str)):
             with open(archive, 'rb') as archive_br:
-                return await self.upload_archive(
+                return self.upload_archive(
                     archive_br, archive_filename, archive_checksum=archive_checksum, 
                     title=title, tags=tags, summary=summary, category_id=category_id
                 )
@@ -129,7 +127,6 @@ class LRRClient:
             url = f"{self.lrr_host}/api/archives/upload"
             response = LanraragiResponse()
             async with aiohttp.ClientSession() as session:
-                files = {'file': (archive_filename, archive)}
                 form_data = aiohttp.FormData(quote_fields=False)
                 form_data.add_field('file', archive, filename=archive_filename, content_type='application/octet-stream')
                 if archive_checksum:
@@ -162,8 +159,7 @@ class LRRClient:
         """
         url = f"{self.lrr_host}/api/archives/{archive_id}"
         response = LanraragiResponse()
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url=url, headers=self.headers) as async_response:
+        async with aiohttp.ClientSession() as session, session.delete(url=url, headers=self.headers) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
                 data = await async_response.json()
@@ -185,8 +181,7 @@ class LRRClient:
         """
         url = f"{self.lrr_host}/api/shinobu"
         response = LanraragiResponse()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=self.headers) as async_response:
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
                 try:
@@ -207,8 +202,7 @@ class LRRClient:
         """
         url = f"{self.lrr_host}/api/info"
         response = LanraragiResponse()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url=url, headers=self.headers) as async_response:
+        async with aiohttp.ClientSession() as session, session.get(url=url, headers=self.headers) as async_response:
                 response.status_code = async_response.status
                 response.success = 1 if async_response.status == 200 else 0
                 try:

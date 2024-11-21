@@ -1,13 +1,12 @@
 import argparse
 import asyncio
 import logging
-from pathlib import Path
 from time import perf_counter
 
 from .cache import drop_cache_table
 from .configuration import config
 from .controller import start_folder_upload_process, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
-from .models import ArchiveMetadata, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
+from .models import ArchiveMetadata, ArchiveValidateUploadStatus
 from .utils import get_version, mask_string
 
 def __configure(args):
@@ -21,8 +20,8 @@ def __configure(args):
             print("No changes to configuration.")
             return 0
     else:
-        lrr_host = input(f"LANraragi Host: ")
-        lrr_api_key = getpass(f"LANraragi API key: ")
+        lrr_host = input("LANraragi Host: ")
+        lrr_api_key = getpass("LANraragi API key: ")
 
     if lrr_host:
         config.lrr_host = lrr_host
@@ -39,6 +38,10 @@ def __reset_cache():
 def __check(args):
     arg_lrr_host = args.lrr_host
     arg_lrr_api_key = args.lrr_api_key
+    if arg_lrr_host:
+        config.lrr_host = arg_lrr_host
+    if arg_lrr_api_key:
+        config.lrr_api_key = arg_lrr_api_key
     is_connected = asyncio.run(run_lrr_connection_test(config.lrr_host, lrr_api_key=config.lrr_api_key))
     print(is_connected)
 
@@ -99,28 +102,28 @@ def __multi_upload(args):
     total_time = perf_counter() - start_time
     if response:
         upload_responses = response.upload_responses
-        stats_by_status_code = dict()
+        stats_by_status_code = {}
         for upload_response in upload_responses:
             status_code = upload_response.status_code.name
             if status_code in stats_by_status_code:
                 stats_by_status_code[status_code] += 1
             else:
                 stats_by_status_code[status_code] = 1
-        print(f"\n --".join([f"{key}: {stats_by_status_code[key]}" for key in stats_by_status_code]))
+        print("\n --".join([f"{key}: {stats_by_status_code[key]}" for key in stats_by_status_code]))
         print(f"Time taken: {total_time}s")
 
 def main():
 
     parser = argparse.ArgumentParser("catapult command line")
-    log_level = parser.add_argument('--log-level', type=str, default='warning', help='Set log level.')
+    parser.add_argument('--log-level', type=str, default='warning', help='Set log level.')
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # version subparser
-    version_subparser = subparsers.add_parser("version", help="Get version.")
+    subparsers.add_parser("version", help="Get version.")
 
     # configure subparser
-    configure_subparser = subparsers.add_parser("configure", help="Configure catapult settings.")
+    subparsers.add_parser("configure", help="Configure catapult settings.")
 
     # check subparser
     check_subparser = subparsers.add_parser("check", help="Check connection to server instance.")
@@ -128,7 +131,7 @@ def main():
     check_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
 
     # reset cache subparser
-    reset_cache_subparser = subparsers.add_parser("reset-cache", help="Reset cache.")
+    subparsers.add_parser("reset-cache", help="Reset cache.")
 
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")

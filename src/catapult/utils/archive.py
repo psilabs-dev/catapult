@@ -1,4 +1,3 @@
-from enum import Enum
 from pathlib import Path
 from typing import List, Union, overload
 
@@ -18,7 +17,7 @@ def find_all_archives(root_directory: Union[Path, str]) -> List[Path]:
         root_directory = Path(root_directory)
 
     if isinstance(root_directory, Path):
-        file_paths = list()
+        file_paths = []
         for item in root_directory.rglob("*"):
             suffix = item.suffix
             if not suffix:

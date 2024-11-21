@@ -2,10 +2,10 @@ from catapult import utils
 
 def test_mask_string():
 
-    assert '' == utils.mask_string('')
-    assert '*' == utils.mask_string('1')
-    assert '**' == utils.mask_string('12')
-    assert 'h*********d' == utils.mask_string('hello world')
+    assert utils.mask_string('') == ''
+    assert utils.mask_string('1') == '*'
+    assert utils.mask_string('12') == '**'
+    assert utils.mask_string('hello world') == 'h*********d'
 
 def test_coalesce():
     assert utils.coalesce('a', None, 'b') == 'a'

@@ -11,7 +11,7 @@ authors = [
 description = "A LANraragi file upload client."
 license = { file = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.10, <3.13"
 dynamic = [
     "dependencies"
 ]
@@ -19,7 +19,8 @@ dynamic = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "tox>=4.23.0"
+    "tox>=4.23.0",
+    "ruff"
 ]
 
 [project.scripts]
@@ -27,6 +28,11 @@ catapult = "catapult.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/psilabs-dev/catapult"
+
+[tool.ruff]
+extend-select = ["ASYNC", "C4", "SIM", "TCH"]
+show-fixes = true
+target-version = "py310"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

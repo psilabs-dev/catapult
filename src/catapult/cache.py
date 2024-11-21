@@ -1,13 +1,8 @@
 import aiosqlite
 import asyncio
-from contextlib import closing
-import hashlib
 import logging
-from pathlib import Path
-import sqlite3
 
 from catapult.configuration import config
-from catapult.lanraragi.utils import compute_archive_id
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +24,7 @@ async def archive_hash_exists(archive_md5: str) -> bool:
     """
     Returns True if hash exists in cache, else False.
     """
-    async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as db:
-        async with db.execute('SELECT * FROM archive_hash WHERE md5 = ?', (archive_md5,)) as cursor:
+    async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as db, db.execute('SELECT * FROM archive_hash WHERE md5 = ?', (archive_md5,)) as cursor:
             return await cursor.fetchone() is not None
 
 async def insert_archive_hash(archive_md5: str):

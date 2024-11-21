@@ -1,5 +1,3 @@
-from pathlib import Path
-
 ALLOWED_LRR_EXTENSIONS = {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}
 
 __JPG_SIGNATURES = [
@@ -43,4 +41,4 @@ ALLOWED_SIGNATURES = __ZIP_SIGNATURES + __RAR_SIGNATURES + [
     "25 50 44 46 2D",
 
 ]
-ALLOWED_SIGNATURES = list(map(lambda signature: signature.replace(' ', '').lower(), ALLOWED_SIGNATURES))
+ALLOWED_SIGNATURES = [signature.replace(' ', '').lower() for signature in ALLOWED_SIGNATURES]

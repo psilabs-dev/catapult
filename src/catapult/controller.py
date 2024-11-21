@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from typing import Dict, List, Union, overload
+from typing import List, Union, overload
 
 from catapult.connections import common
 from catapult.cache import archive_hash_exists, insert_archive_hash
@@ -307,6 +307,7 @@ async def async_upload_archive_to_server(
                     await asyncio.sleep(time_to_sleep)
                 else:
                     upload_response.status_code = ArchiveValidateUploadStatus.NETWORK_FAILURE
+                    upload_response.message = str(e)
                     return upload_response
 
 async def upload_multiple_archives_to_server(

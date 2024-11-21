@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import List
 
 from catapult.models import ArchiveUploadRequest, ArchiveMetadata
@@ -10,7 +9,7 @@ def build_upload_requests(contents_directory: str) -> List[ArchiveUploadRequest]
     """
 
     archive_file_path_list = find_all_archives(contents_directory)
-    upload_requests = list()
+    upload_requests = []
 
     for archive_file_path in archive_file_path_list:
         archive_file_name = archive_file_path.name

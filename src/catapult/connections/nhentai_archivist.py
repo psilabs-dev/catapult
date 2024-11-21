@@ -1,4 +1,3 @@
-import abc
 import os
 from pathlib import Path
 import sqlite3
@@ -52,7 +51,7 @@ def __nh_archivist_build_metadata(archive_id: str, conn: sqlite3.Connection) -> 
     ''', ('category', archive_id)).fetchall()
 
     # assemble tags by adding them to the tags list.
-    tag_list = list()
+    tag_list = []
     for tag in tags:
         tag_list.append(tag[0])
     for character in characters:
@@ -92,7 +91,7 @@ def is_available(db: str, contents_directory: str) -> bool:
         conn = sqlite3.connect(db)
         conn.close()
         return True
-    except:
+    except:  # noqa: E722
         return False
 
 def build_upload_requests(db: str, contents_directory: str) -> List[ArchiveUploadRequest]:
@@ -100,7 +99,7 @@ def build_upload_requests(db: str, contents_directory: str) -> List[ArchiveUploa
     Build upload requests for nh archivist.
     """
     all_archive_paths = find_all_archives(contents_directory)
-    upload_requests: List[ArchiveUploadRequest]=list()
+    upload_requests: List[ArchiveUploadRequest]=[]
     conn = sqlite3.connect(db)
     for archive_file_path in all_archive_paths:
         archive_file = os.path.split(archive_file_path)[1]

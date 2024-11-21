@@ -28,7 +28,7 @@ def compute_sha1(file: Union[io.IOBase, Path, str]) -> str:
         while chunk := file.read(8192):
             sha1.update(chunk)
         return sha1.hexdigest()
-    elif isinstance(file, Path) or isinstance(file, str):
+    elif isinstance(file, (Path, str)):
         with open(file, 'rb') as file_br:
             while chunk := file_br.read(8192):
                 sha1.update(chunk)
@@ -48,7 +48,7 @@ def compute_archive_id(file_path: Union[Path, str]) -> str:
     """
     Compute the ID of a file in the same way as the server.
     """
-    if isinstance(file_path, Path) or isinstance(file_path, str):
+    if isinstance(file_path, (Path, str)):
         with open(file_path, 'rb') as fb:
             data = fb.read(512000)
         
@@ -73,7 +73,7 @@ def get_signature_hex(archive_path: Union[Path, str]) -> str:
     """
     Get first 8 bytes of archive in hex repr.
     """
-    if isinstance(archive_path, str) or isinstance(archive_path, Path):
+    if isinstance(archive_path, (str, Path)):
         with open(archive_path, 'rb') as fb:
             signature = fb.read(8).hex()
             return signature
