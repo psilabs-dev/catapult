@@ -75,7 +75,7 @@ def get_signature_hex(archive_path: Union[Path, str]) -> str:
     """
     if isinstance(archive_path, (str, Path)):
         with open(archive_path, 'rb') as fb:
-            signature = fb.read(8).hex()
+            signature = fb.read(24).hex()
             return signature
     else:
         raise TypeError(f"Unsupported file type: {type(archive_path)}")
