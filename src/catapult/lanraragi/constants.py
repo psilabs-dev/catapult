@@ -42,3 +42,4 @@ ALLOWED_SIGNATURES = __ZIP_SIGNATURES + __RAR_SIGNATURES + [
 
 ]
 ALLOWED_SIGNATURES = [signature.replace(' ', '').lower() for signature in ALLOWED_SIGNATURES]
+NULL_ARCHIVE_ID = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
