@@ -240,8 +240,7 @@ async def async_upload_archive_to_server(
     # this is probably something that is done better off on another machine or separate workload...
 
     # upload archive to server
-    # use normal blocking open, aiofiles may be too slow.
-    with open(archive_file_path, 'rb') as archive_br:  # noqa: ASYNC230
+    with open(archive_file_path, 'rb') as archive_br:
         archive_checksum = compute_sha1(archive_br)
         archive_br.seek(0)
         checksum_mismatch_retry_count = 0
