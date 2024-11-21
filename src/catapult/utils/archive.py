@@ -30,3 +30,27 @@ def find_all_archives(root_directory: Union[Path, str]) -> List[Path]:
         return file_paths
     else:
         raise TypeError(f"Unsupported root directory type: {type(root_directory)}")
+
+@overload
+def find_all_leaf_folders(root_directory: str) -> List[Path]:
+    ...
+
+@overload
+def find_all_leaf_folders(root_directory: Path) -> List[Path]:
+    ...
+
+def find_all_leaf_folders(root_directory: Union[Path, str]) -> List[Path]:
+    """
+    Find all folders in a root directory that do not contain folders.
+    """
+    if isinstance(root_directory, str):
+        root_directory = Path(root_directory)
+    
+    if isinstance(root_directory, Path):
+        leafs = []
+        for subdir in root_directory.rglob("*"):
+            if subdir.is_dir() and not any(subsubdir.is_dir() for subsubdir in subdir.iterdir()):
+                leafs.append(subdir)
+        return leafs
+    else:
+        raise TypeError(f"Unsupported root directory type: {type(root_directory)}")
