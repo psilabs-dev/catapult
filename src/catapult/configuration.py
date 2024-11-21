@@ -52,7 +52,6 @@ class Configuration:
         # load environment variable configuration.
         self.lrr_host = os.getenv('LRR_HOST', self.lrr_host)
         self.lrr_api_key = os.getenv('LRR_API_KEY', self.lrr_api_key)
-        self.celery_broker_url = os.getenv('CELERY_BROKER_URL', self.celery_broker_url) # deprecate
 
         self.multi_upload_folder_dir = os.getenv('MULTI_UPLOAD_FOLDERS', self.multi_upload_folder_dir)
 
