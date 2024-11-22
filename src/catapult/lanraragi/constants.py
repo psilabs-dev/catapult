@@ -1,5 +1,3 @@
-from pathlib import Path
-
 ALLOWED_LRR_EXTENSIONS = {"zip", "rar", "targz", "lzma", "7z", "xz", "cbz", "cbr", "pdf"}
 
 __JPG_SIGNATURES = [
@@ -43,4 +41,9 @@ ALLOWED_SIGNATURES = __ZIP_SIGNATURES + __RAR_SIGNATURES + [
     "25 50 44 46 2D",
 
 ]
-ALLOWED_SIGNATURES = list(map(lambda signature: signature.replace(' ', '').lower(), ALLOWED_SIGNATURES))
+IMAGE_SIGNATURES = __JPG_SIGNATURES + __PNG_SIGNATURES
+
+ALLOWED_SIGNATURES = [signature.replace(' ', '').lower() for signature in ALLOWED_SIGNATURES]
+IMAGE_SIGNATURES = [signature.replace(' ', '').lower() for signature in IMAGE_SIGNATURES]
+
+NULL_ARCHIVE_ID = "da39a3ee5e6b4b0d3255bfef95601890afd80709"

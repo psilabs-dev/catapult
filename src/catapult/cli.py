@@ -4,10 +4,12 @@ import logging
 from pathlib import Path
 from time import perf_counter
 
+from catapult.metadata import NhentaiArchivistMetadataClient
+
 from .cache import drop_cache_table
 from .configuration import config
-from .controller import start_folder_upload_process, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
-from .models import ArchiveMetadata, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
+from .controller import upload_archives_from_folders, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
+from .models import ArchiveMetadata, ArchiveValidateUploadStatus
 from .utils import get_version, mask_string
 
 def __configure(args):
@@ -21,8 +23,8 @@ def __configure(args):
             print("No changes to configuration.")
             return 0
     else:
-        lrr_host = input(f"LANraragi Host: ")
-        lrr_api_key = getpass(f"LANraragi API key: ")
+        lrr_host = input("LANraragi Host: ")
+        lrr_api_key = getpass("LANraragi API key: ")
 
     if lrr_host:
         config.lrr_host = lrr_host
@@ -39,12 +41,15 @@ def __reset_cache():
 def __check(args):
     arg_lrr_host = args.lrr_host
     arg_lrr_api_key = args.lrr_api_key
+    if arg_lrr_host:
+        config.lrr_host = arg_lrr_host
+    if arg_lrr_api_key:
+        config.lrr_api_key = arg_lrr_api_key
     is_connected = asyncio.run(run_lrr_connection_test(config.lrr_host, lrr_api_key=config.lrr_api_key))
     print(is_connected)
 
 def __validate(args):
     file_path = args.filepath
-    # print(validate_archive_file(file_path, check_for_corruption=is_check_corruption))
     response = asyncio.run(async_validate_archive(file_path))
     print(f"{response.status_code.name} - {response.message}")
 
@@ -85,42 +90,66 @@ def __multi_upload(args):
 
     start_time = perf_counter()
     if plugin_command == 'from-folder':
-        contents_directory = args.folder
+        folders = args.folders
 
-        if not contents_directory:
-            contents_directory = config.multi_upload_folder_dir
-
-        assert contents_directory, "no contents directory"
-
-        response = start_folder_upload_process(
-            contents_directory, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
-        )
+        if not folders:
+            folders = config.multi_upload_folder_dir
+        if not folders:
+            raise TypeError("Multi upload folder config cannot be empty (set MULTI_UPLOAD_FOLDER environment).")
+        folders = [Path(directory) for directory in folders.split(";")]
+        for folder in folders:
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder not found: {folder}")
+        response = asyncio.run(upload_archives_from_folders(folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache))
+    elif plugin_command == 'from-nhentai-archivist':
+        db = args.db
+        folders = args.folders
+        if not db:
+            db = config.multi_upload_nhentai_archivist_db
+        if not folders:
+            folders = config.multi_upload_nhentai_archivist_folders
+        if not db:
+            raise TypeError("Nhentai Archivist database config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_DB)")
+        if not folders:
+            raise TypeError("Nhentai Archivist folder config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS)")
+        folders = [Path(directory) for directory in folders.split(";")]
+        for folder in folders:
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder not found: {folder}")
+        nhentai_archivist_client = NhentaiArchivistMetadataClient(db)
+        response = asyncio.run(upload_archives_from_folders(
+            folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache, metadata_client=nhentai_archivist_client
+        ))
+    elif plugin_command == 'from-pixiv':
+        raise NotImplementedError("Pixiv upload with metadata injection not implemented!")
+    else:
+        raise NotImplementedError(f"Unsupported plugin: {plugin_command}")
 
     total_time = perf_counter() - start_time
     if response:
         upload_responses = response.upload_responses
-        stats_by_status_code = dict()
+        stats_by_status_code = {}
         for upload_response in upload_responses:
             status_code = upload_response.status_code.name
             if status_code in stats_by_status_code:
                 stats_by_status_code[status_code] += 1
             else:
                 stats_by_status_code[status_code] = 1
-        print(f"\n --".join([f"{key}: {stats_by_status_code[key]}" for key in stats_by_status_code]))
+        print("\n --".join([f"{key}: {stats_by_status_code[key]}" for key in stats_by_status_code]))
         print(f"Time taken: {total_time}s")
 
 def main():
 
     parser = argparse.ArgumentParser("catapult command line")
-    log_level = parser.add_argument('--log-level', type=str, default='warning', help='Set log level.')
+    parser.add_argument('--log-level', type=str, default='warning', help='Set log level.')
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # version subparser
-    version_subparser = subparsers.add_parser("version", help="Get version.")
+    subparsers.add_parser("version", help="Get version.")
 
     # configure subparser
-    configure_subparser = subparsers.add_parser("configure", help="Configure catapult settings.")
+    subparsers.add_parser("configure", help="Configure catapult settings.")
 
     # check subparser
     check_subparser = subparsers.add_parser("check", help="Check connection to server instance.")
@@ -128,7 +157,7 @@ def main():
     check_subparser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
 
     # reset cache subparser
-    reset_cache_subparser = subparsers.add_parser("reset-cache", help="Reset cache.")
+    subparsers.add_parser("reset-cache", help="Reset cache.")
 
     # validate subparser
     validate_subparser = subparsers.add_parser("validate", help="Validate a file.")
@@ -148,9 +177,12 @@ def main():
     multiupload_subparser = subparsers.add_parser("multi-upload", help="Plugins command")
     mu_subparsers = multiupload_subparser.add_subparsers(dest='plugin_command')
     mu_folder_parser = mu_subparsers.add_parser('from-folder', help="Upload archives from folder.")
-    mu_folder_parser.add_argument('--folder', type=str, help='Path to nhentai archivist contents folder.')
+    mu_folder_parser.add_argument('--folders', type=str, help='Path to nhentai archivist contents folder.')
+    mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
+    mu_nh_parser.add_argument('--db', type=str, help='Path to nhentai archivist database.')
+    mu_nh_parser.add_argument('--folders', type=str, help='Path to nhentai archivist contents folder.')
 
-    for plugin_parser in [mu_folder_parser]:
+    for plugin_parser in [mu_folder_parser, mu_nh_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
         plugin_parser.add_argument('--lrr-api-key', type=str, help='API key of the server.')
         plugin_parser.add_argument('--no-cache', action='store_true', help='Disable cache when remove duplicates.')

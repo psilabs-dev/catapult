@@ -49,9 +49,15 @@ catapult validate tests/resources/fake.cbz
 
 Upload all Archives from a folder.
 ```sh
-catapult multi-upload from-folder --folder /path/to/archives
+catapult multi-upload from-folder --folders /path/to/archives
 # starts uploading all archives found in /path/to/archives...
 ```
+
+Upload all Archives downloaded from [nhentai_archivist](https://github.com/9-FS/nhentai_archivist.git).
+```sh
+catapult multi-upload from-nhentai-archivist --folders /path/to/nhentai-archives --db /path/to/db
+```
+With (environment) configuration, you can just run `catapult multi-upload from-folder` or `catapult multi-upload from-nhentai-archivist`.
 
 ## Configuration
 There are several ways to configure `catapult`,
@@ -70,7 +76,15 @@ Application-specific environment variables:
 - `LRR_API_KEY`: API key for the LANraragi server.
 
 Multi-upload from folder:
-- `MULTI_UPLOAD_FOLDER`: path to the folder to upload Archives from.
+- `MULTI_UPLOAD_FOLDERS`: list of folders of Archives (joined by ";") that `catapult` should upload from.
+
+Nhentai Archivist
+- `MULTI_UPLOAD_NH_ARCHIVIST_DB`: path to the `nhentai_archivist` sqlite database.
+- `MULTI_UPLOAD_NH_ARCHIVIST_FOLDERS`: list of folders of Archives (joined by ";") that `catapult` should upload from with metadata from corresponding database.
+
+PixivUtil2
+- `MULTI_UPLOAD_PIXIVUTIL2_DB`: path to the PixivUtil2 sqlite database.
+- `MULTI_UPLOAD_PIXIVUTIL_FOLDERS`: list of folders of Archives/artworks (joined by ";") that `catapult` should upload from with metadata from corresponding database.
 
 ## Client Library
 Example of uploading an Archive using `LRRClient`:

@@ -4,15 +4,16 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from typing import Dict, List, Union, overload
+from typing import List, Union, overload
 
-from catapult.connections import common
 from catapult.cache import archive_hash_exists, insert_archive_hash
 from catapult.lanraragi.client import LRRClient
 from catapult.lanraragi.constants import ALLOWED_LRR_EXTENSIONS
 from catapult.lanraragi.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
+from catapult.metadata import MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
+from catapult.utils.archive import find_all_archives
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +308,7 @@ async def async_upload_archive_to_server(
                     await asyncio.sleep(time_to_sleep)
                 else:
                     upload_response.status_code = ArchiveValidateUploadStatus.NETWORK_FAILURE
+                    upload_response.message = str(e)
                     return upload_response
 
 async def upload_multiple_archives_to_server(
@@ -354,17 +356,37 @@ async def upload_multiple_archives_to_server(
     batch_response.upload_responses = upload_responses
     return batch_response
 
-def start_folder_upload_process(
-        contents_directory: str, lrr_host: str, lrr_api_key: str=None, use_cache: bool=True
+async def upload_archives_from_folders(
+        folders: List[Path], lrr_host: str, lrr_api_key: str=None, use_cache: bool=True, metadata_client: MetadataClient=None,
 ):
     """
-    Upload archives found in a folder.
+    Upload Archives found in a list of Folder Paths.
+
+    Parameters
+    ----------
+    folders : List[Path]
+        A list of folder Paths that contain Archives to upload.
+    lrr_host : str
+        Absolute URL of the LANraragi host (e.g. `http://localhost:3000` or `https://lanraragi`).
+    lrr_api_key : str, optional
+        API key for LANraragi server. Defaults to no key.
+    use_cache : int, optional
+        Use cache for Archive-to-server deduplication (Default: True).
+    metadata_client : MetadataClient, optional
+        Client/interface for a metadata/content downloader.
     """
-    logger.info("Building folder archive upload requests...")
-    upload_requests = common.build_upload_requests(contents_directory)
-    logger.info("Running upload job for folder...")
-    batch_upload_response = asyncio.run(upload_multiple_archives_to_server(
-        upload_requests, lrr_host, lrr_api_key=lrr_api_key,
-        use_cache=use_cache
-    ))
+    upload_requests = []
+    for folder in folders:
+        archives_from_folder = find_all_archives(folder)
+        for archive_path in archives_from_folder:
+            if metadata_client:
+                archive_id = metadata_client.get_id_from_path(archive_path)
+                metadata = await metadata_client.get_metadata_from_id(archive_id)
+            else:
+                metadata = ArchiveMetadata()
+            upload_request = ArchiveUploadRequest(archive_path, archive_path.name, metadata)
+            upload_requests.append(upload_request)
+    batch_upload_response = await upload_multiple_archives_to_server(
+        upload_requests, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
+    )
     return batch_upload_response

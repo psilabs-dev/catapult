@@ -17,7 +17,7 @@ def image_is_corrupted(image_path: Union[Path, str]) -> bool:
     """
     Quick-and-dirty method to check if an image is corrupted.
     """
-    if isinstance(image_path, str) or isinstance(image_path, Path):
+    if isinstance(image_path, (str, Path)):
         image = Image.open(image_path)
     else:
         raise TypeError(f"Unsupported image path type: {type(image_path)}")
@@ -47,7 +47,6 @@ def archive_contains_corrupted_image(archive_path: Union[Path, str]) -> bool:
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
             zip_ref.extractall(extracted_archive_folder)
             for image in extracted_archive_folder.iterdir():
-                if image.suffix.lower() in {".png", ".jpg", ".jpeg"}:
-                    if image_is_corrupted(image):
-                        return True
+                if image.suffix.lower() in {".png", ".jpg", ".jpeg"} and image_is_corrupted(image):
+                    return True
     return False
