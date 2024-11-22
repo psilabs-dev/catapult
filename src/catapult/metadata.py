@@ -38,9 +38,8 @@ class NhentaiArchivistMetadataClient(MetadataClient):
 
     def get_id_from_path(self, file_path: str | Path) -> str:
         if isinstance(file_path, str):
-            archive_id = file_path.split()[0]
-            return archive_id
-        elif isinstance(file_path, Path):
+            file_path = Path(file_path)
+        if isinstance(file_path, Path):
             archive_id = file_path.name.split()[0]
             return archive_id
         else:
