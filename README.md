@@ -101,6 +101,23 @@ response = asyncio.run(client.upload_archive(archive_path, archive_name))
 print(response)
 ```
 
+## Satellite Server
+`satellite` is an HTTP server that attaches to the contents of LANraragi and performs two auxiliary tasks:
+
+1. Identifying (and removing) corrupted archives;
+1. Updating downloader-specific metadata using `catapult`.
+
+Start a `satellite` with uvicorn:
+```sh
+pip install .[satellite]
+uvicorn catapult.satellite:app --host 0.0.0.0 --port 8000
+```
+
+**Updating nhentai_archivist metadata**: Make a POST request to update nhentai_archivist metadata:
+```sh
+curl -X POST http://localhost:8000/api/metadata/nhentai-archivist
+```
+
 ## Development
 
 Run integration tests against a LANraragi docker instance. This setup script will create an LRR instance, inject it with an API key, and apply permissions.

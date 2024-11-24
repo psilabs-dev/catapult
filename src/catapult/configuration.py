@@ -29,6 +29,9 @@ class Configuration:
     multi_upload_pixivutil2_db: str = None
     multi_upload_pixivutil2_folders: str = None
 
+    # satellite config
+    lrr_contents_dir: str = None
+
     def __init__(self):
         """
         Initialize configuration singleton.
@@ -60,6 +63,8 @@ class Configuration:
 
         self.multi_upload_pixivutil2_db = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_DB', self.multi_upload_pixivutil2_db)
         self.multi_upload_pixivutil2_folders = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_FOLDERS', self.multi_upload_pixivutil2_folders)
+
+        self.lrr_contents_dir = os.getenv('LRR_CONTENTS', self.lrr_contents_dir)
 
     def save(self):
         """

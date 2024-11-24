@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "catapult"
-version = "0.4.0"
+version = "0.5.0"
 authors = [
     {name="psilabs-dev"}
 ]
@@ -21,6 +21,9 @@ dev = [
     "pytest>=8.0.0",
     "tox>=4.23.0",
     "ruff"
+]
+satellite = [
+    "fastapi[standard]==0.110.0"
 ]
 
 [project.scripts]
