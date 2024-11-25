@@ -33,7 +33,7 @@ catapult = "catapult.cli:main"
 Homepage = "https://github.com/psilabs-dev/catapult"
 
 [tool.ruff]
-extend-select = ["ASYNC", "C4", "SIM", "TCH"]
+extend-select = ["ASYNC", "C4", "SIM"]
 show-fixes = true
 ignore = ["ASYNC230"] # use normal blocking open, aiofiles may be too slow.
 target-version = "py310"
