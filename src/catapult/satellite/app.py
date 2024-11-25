@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from aiolrr.client import LRRClient
 from catapult import cache
-from catapult.cache import ArchiveIntegrityStatus, create_cache_table, delete_archive, get_archives_by_integrity_status, insert_archive
+from catapult.cache import ArchiveIntegrityStatus
 from catapult.configuration import config
 from catapult.metadata import NhentaiArchivistMetadataClient
 from catapult.utils.archive import find_all_archives
@@ -23,7 +23,7 @@ logger = logging.getLogger('uvicorn.info')
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await create_cache_table()
+    await cache.create_cache_table()
     yield
 
 app = FastAPI(
@@ -95,7 +95,7 @@ async def get_integrity_status(integrity_status: int):
     """
     Get archives from database based on integrity ID.
     """
-    results = [cache.get_path(result) for result in (await get_archives_by_integrity_status(integrity_status))]
+    results = [cache.get_path(result) for result in (await cache.get_archives_by_integrity_status(integrity_status))]
     return JSONResponse(results, status_code=200)
 
 async def __scan_archives_directory(contents_dir):
@@ -146,10 +146,10 @@ async def __update_integrity_status(rows):
         async with semaphore:
             if archive_contains_corrupted_image(_path):
                 logger.warning(f"[update_integrity_status] Archive NOT OK: {_path.name}")
-                await insert_archive(archive_md5, path, ArchiveIntegrityStatus.ARCHIVE_CORRUPTED.value, stat.st_ctime, stat.st_mtime)
+                await cache.insert_archive(archive_md5, path, ArchiveIntegrityStatus.ARCHIVE_CORRUPTED.value, stat.st_ctime, stat.st_mtime)
             else:
                 logger.info(f"[update_integrity_status] Archive OK:    {_path.name}")
-                await insert_archive(archive_md5, path, ArchiveIntegrityStatus.ARCHIVE_OK.value, stat.st_ctime, stat.st_mtime)
+                await cache.insert_archive(archive_md5, path, ArchiveIntegrityStatus.ARCHIVE_OK.value, stat.st_ctime, stat.st_mtime)
     tasks = [
         asyncio.create_task(__handle_path(row)) for row in rows
     ]
@@ -163,7 +163,7 @@ async def update_integrity_status(background_tasks: BackgroundTasks):
     Get all PENDING archives in cache and classify their integrity status.
     """
     integrity_status = ArchiveIntegrityStatus.ARCHIVE_PENDING.value
-    rows = await get_archives_by_integrity_status(integrity_status)
+    rows = await cache.get_archives_by_integrity_status(integrity_status)
     background_tasks.add_task(__update_integrity_status, rows)
     # paths_to_analyze = [cache.get_path(row) for row in rows]
     num_paths_to_analyze = len([cache.get_path(row) for row in rows])
@@ -188,7 +188,7 @@ async def delete_corrupted_archives(background_tasks: BackgroundTasks):
     """
     logger.info("[delete_corrupted_archives] Removing corrupted archives...")
     integrity_status = ArchiveIntegrityStatus.ARCHIVE_CORRUPTED.value
-    rows = await get_archives_by_integrity_status(integrity_status)
+    rows = await cache.get_archives_by_integrity_status(integrity_status)
     paths_to_delete = [cache.get_path(row) for row in rows]
     num_paths_to_delete = len(paths_to_delete)
     background_tasks.add_task(__delete_corrupted_archives, rows)
