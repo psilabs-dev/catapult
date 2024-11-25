@@ -5,7 +5,7 @@ import hashlib
 import logging
 from pathlib import Path
 from time import perf_counter
-from typing import Dict, List
+from typing import Dict
 import aiohttp
 import aiohttp.client_exceptions
 from fastapi import BackgroundTasks, FastAPI
