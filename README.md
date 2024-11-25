@@ -86,21 +86,6 @@ PixivUtil2
 - `MULTI_UPLOAD_PIXIVUTIL2_DB`: path to the PixivUtil2 sqlite database.
 - `MULTI_UPLOAD_PIXIVUTIL2_FOLDERS`: list of folders of Archives/artworks (joined by ";") that `catapult` should upload from with metadata from corresponding database.
 
-## Client Library
-Example of uploading an Archive using `LRRClient`:
-```python
-import asyncio
-from catapult.lanraragi import LRRClient
-
-client = LRRClient.default_client()
-
-archive_path = "archive-to-upload.zip"
-archive_name = archive_path
-
-response = asyncio.run(client.upload_archive(archive_path, archive_name))
-print(response)
-```
-
 ## Satellite Server
 `satellite` is an HTTP server that attaches to the contents of LANraragi and performs two auxiliary tasks:
 

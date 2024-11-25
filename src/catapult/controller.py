@@ -6,10 +6,11 @@ import logging
 from pathlib import Path
 from typing import List, Union, overload
 
+from aiolrr.client import LRRClient
+from aiolrr.constants import ALLOWED_LRR_EXTENSIONS
+from aiolrr.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
+
 from catapult.cache import archive_hash_exists, insert_archive_hash
-from catapult.lanraragi.client import LRRClient
-from catapult.lanraragi.constants import ALLOWED_LRR_EXTENSIONS
-from catapult.lanraragi.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
 from catapult.metadata import MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
@@ -180,12 +181,6 @@ async def async_upload_archive_to_server(
     Returns
     -------
     ArchiveUploadResponse object.
-
-    Raises
-    ------
-    requests.ConnectionError
-        Cannot reach LANraragi server, SSL certificate invalid, or a general connection error.
-    requests.Timeout
     """
     upload_response = ArchiveUploadResponse()
     upload_response.archive_file_path = archive_file_path
