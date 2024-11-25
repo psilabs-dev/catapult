@@ -10,7 +10,7 @@ class Configuration:
     Configuration singleton object; holds configurations of the application.
     """
 
-    CATAPULT_HOME = Path.home() / ".catapult"
+    CATAPULT_HOME = os.getenv("CATAPULT_HOME", Path.home() / ".catapult")
     CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
     CATAPULT_CACHE_DB = CATAPULT_HOME / "cache.db"
 

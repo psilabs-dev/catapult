@@ -10,7 +10,8 @@ from aiolrr.client import LRRClient
 from aiolrr.constants import ALLOWED_LRR_EXTENSIONS
 from aiolrr.utils import compute_sha1, compute_archive_id, get_signature_hex, is_valid_signature_hex
 
-from catapult.cache import archive_hash_exists, insert_archive_hash
+from catapult import cache
+from catapult.cache import ArchiveIntegrityStatus, get_archive, insert_archive
 from catapult.metadata import MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
@@ -183,10 +184,14 @@ async def async_upload_archive_to_server(
     ArchiveUploadResponse object.
     """
     upload_response = ArchiveUploadResponse()
-    upload_response.archive_file_path = archive_file_path
+    upload_response.archive_file_path = archive_file_path.absolute()
     upload_response.message = ""
     archive_file_name = archive_file_name if archive_file_name else archive_file_path.name
     archive_md5 = hashlib.md5(str(archive_file_path).encode('utf-8')).hexdigest()
+    archive_stat = archive_file_path.stat()
+    archive_integrity_status = ArchiveIntegrityStatus.ARCHIVE_PENDING
+    ctime = archive_stat.st_ctime
+    mtime = archive_stat.st_mtime
     client = LRRClient(lrr_host=lrr_host, lrr_api_key=lrr_api_key)
 
     # check if archive exists
@@ -207,8 +212,8 @@ async def async_upload_archive_to_server(
 
     # check if archive is duplicate (locally)
     if use_cache:
-        archive_uploaded = await archive_hash_exists(archive_md5)
-        if archive_uploaded:
+        archive_cache_row = await get_archive(archive_md5)
+        if archive_cache_row and cache.get_modify_time_seconds(archive_cache_row) == mtime:
             upload_response.status_code = ArchiveValidateUploadStatus.IS_DUPLICATE
             upload_response.message = "Duplicate in cache"
             logger.info(f"Duplicate in cache: {archive_file_name}")
@@ -255,7 +260,9 @@ async def async_upload_archive_to_server(
                 if status_code == 200:
                     upload_response.status_code = ArchiveValidateUploadStatus.SUCCESS
                     if use_cache:
-                        await insert_archive_hash(archive_md5)
+                        await insert_archive(
+                            archive_md5, str(upload_response.archive_file_path), archive_integrity_status.value, ctime, mtime
+                        )
                     logger.info(f"Archive uploaded: {archive_file_name}")
                     return upload_response
                 elif status_code == 400: # shouldn't happen.

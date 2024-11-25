@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Union, overload
 
-from catapult.lanraragi.constants import ALLOWED_LRR_EXTENSIONS
+from aiolrr.constants import ALLOWED_LRR_EXTENSIONS
 
 @overload
 def find_all_archives(root_directory: str) -> List[Path]:

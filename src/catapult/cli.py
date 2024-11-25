@@ -6,7 +6,7 @@ from time import perf_counter
 
 from catapult.metadata import NhentaiArchivistMetadataClient
 
-from .cache import drop_cache_table
+from .cache import create_cache_table, drop_cache_table
 from .configuration import config
 from .controller import upload_archives_from_folders, run_lrr_connection_test, async_upload_archive_to_server, async_validate_archive
 from .models import ArchiveMetadata, ArchiveValidateUploadStatus
@@ -189,7 +189,6 @@ def main():
 
     args = parser.parse_args()
     command = args.command
-
     logging.basicConfig(level=args.log_level.upper())
 
     if command == "version":
@@ -208,7 +207,9 @@ def main():
         return __validate(args)
 
     elif command == "upload":
+        asyncio.run(create_cache_table())
         return __upload(args)
 
     elif command == 'multi-upload':
+        asyncio.run(create_cache_table())
         return __multi_upload(args)
