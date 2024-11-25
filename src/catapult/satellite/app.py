@@ -32,8 +32,9 @@ app = FastAPI(
 
 async def __update_nhentai_archivist_metadata(lanraragi: LRRClient, nhentai_archivist: NhentaiArchivistMetadataClient):
     # get all untagged archives from LRR.
+    start_time = perf_counter()
     untagged_archives = (await lanraragi.get_untagged_archives()).data
-    logger.info(f"Found {len(untagged_archives)} untagged archives.")
+    logger.info(f"[update_nhentai_archivist_metadata] Found {len(untagged_archives)} untagged archives.")
 
     semaphore = Semaphore(value=8)
     async def __handle_archive_id(archive_id: str):
@@ -53,10 +54,10 @@ async def __update_nhentai_archivist_metadata(lanraragi: LRRClient, nhentai_arch
                         archive_id, title=nhentai_metadata.title, tags=nhentai_metadata.tags, summary=nhentai_metadata.summary
                     )
                     if response.success:
-                        logger.info(f"Updated archive metadata: {nhentai_metadata.title}")
+                        logger.info(f"[update_nhentai_archivist_metadata] Updated archive metadata: {nhentai_metadata.title}")
                         return (archive_id, response.status_code)
                     else:
-                        logger.error(f"Failed to update archive: {archive_id}")
+                        logger.error(f"[update_nhentai_archivist_metadata] Failed to update archive: {archive_id}")
                         return (archive_id, response.status_code)
                 except aiohttp.client_exceptions.ClientConnectionError:
                     # retry indefinitely
@@ -65,13 +66,15 @@ async def __update_nhentai_archivist_metadata(lanraragi: LRRClient, nhentai_arch
 
     tasks = [asyncio.create_task(__handle_archive_id(archive_id)) for archive_id in untagged_archives]
     results = await asyncio.gather(*tasks)
-    response:Dict[int, List[str]] = {}
+    arc_count_by_status_code: Dict[int, int] = {}
     for result in results:
-        archive_id, status_code = result
-        if status_code not in response:
-            response[status_code] = [archive_id]
+        status_code = result[1]
+        if status_code not in arc_count_by_status_code:
+            arc_count_by_status_code[status_code] = 1
         else:
-            response[status_code].append(archive_id)
+            arc_count_by_status_code[status_code] += 1
+    duration = perf_counter() - start_time
+    logger.info(f"[update_nhentai_archivist_metadata] Completed metadata update: time {duration}s; result: {str(arc_count_by_status_code)}")
 
 @app.post("/api/metadata/nhentai-archivist")
 async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks):
@@ -119,7 +122,7 @@ async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks):
     }, status_code=200)
 
 @app.get("/api/archives/integrity/{integrity_status}")
-async def get_integrity_status(integrity_status: int):
+async def get_integrity_by_status(integrity_status: int):
     """
     Get archives from database based on integrity ID.
     """
@@ -127,6 +130,7 @@ async def get_integrity_status(integrity_status: int):
     return JSONResponse(results, status_code=200)
 
 async def __scan_archives_directory(contents_dir):
+    start_time = perf_counter()
     integrity_status = ArchiveIntegrityStatus.ARCHIVE_PENDING.value
     all_archives = find_all_archives(contents_dir)
     archive_paths = []
@@ -141,6 +145,8 @@ async def __scan_archives_directory(contents_dir):
         await cache.insert_archive(archive_md5, archive_path, integrity_status, archive_stat.st_ctime, archive_stat.st_mtime)
         logger.info(f"[scan_archives_directory] Insert archive {archive.name}")
         archive_paths.append(archive_path)
+    duration = perf_counter() - start_time
+    logger.info(f"[scan_archives_directory] Scanned {len(archive_paths)} archives. Time: {duration}s")
 
 @app.post("/api/archives/scan")
 async def scan_archives_directory(background_tasks: BackgroundTasks):
@@ -160,7 +166,7 @@ async def scan_archives_directory(background_tasks: BackgroundTasks):
 
 async def __update_integrity_status(rows):
     # run check
-    logger.info("[update_integrity_status] classifying archive integrity...")
+    logger.debug("[update_integrity_status] Classifying archive integrity...")
     start_time = perf_counter()
     semaphore = Semaphore(value=8)
     async def __handle_path(row):
@@ -181,9 +187,9 @@ async def __update_integrity_status(rows):
     tasks = [
         asyncio.create_task(__handle_path(row)) for row in rows
     ]
-    await asyncio.gather(*tasks)
+    completed = await asyncio.gather(*tasks)
     duration = perf_counter() - start_time
-    logger.info(f"[update_integrity_status] time: {duration}s")
+    logger.info(f"[update_integrity_status] Classified {len(completed)} archives. Time: {duration}s")
 
 @app.post("/api/archives/integrity")
 async def update_integrity_status(background_tasks: BackgroundTasks):
@@ -199,14 +205,21 @@ async def update_integrity_status(background_tasks: BackgroundTasks):
     return JSONResponse({"message": f"Queued integrity scan of {num_paths_to_analyze} archives."}, status_code=200)
 
 async def __delete_corrupted_archives(rows):
+    logger.debug("[delete_corrupted_archives] Deleting corrupted archives...")
+    start_time = perf_counter()
+
+    num_deleted = 0
     for row in rows:
         try:
             _path = Path(cache.get_path(row))
             _path.unlink()
+            num_deleted += 1
         except FileNotFoundError:
             logger.info(f"[delete_corrupted_archives] Archive does not exist: {_path}")
         await cache.delete_archive(cache.get_md5(row))
         logger.info(f"[delete_corrupted_archives] DELETE {_path.name}")
+    duration = perf_counter() - start_time
+    logger.info(f"[delete_corrupted_archives] Deleted {num_deleted} archives. Time: {duration}s.")
 
 @app.delete("/api/archives/corrupted")
 async def delete_corrupted_archives(background_tasks: BackgroundTasks):
