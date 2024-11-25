@@ -53,12 +53,16 @@ async def get_archive(archive_md5: str):
     async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE md5 = ?', (archive_md5,)) as cursor:
         return await cursor.fetchone()
 
-async def get_archives_by_integrity_status(integrity_status: int):
+async def get_archives_by_integrity_status(integrity_status: int, limit: int=None):
     """
     Get all archives with given integrity status.
     """
-    async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE integrity_status = ?', (integrity_status,)) as cursor:
-        return await cursor.fetchall()
+    if limit:
+        async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE integrity_status = ? LIMIT ?', (integrity_status, limit)) as cursor:
+            return await cursor.fetchall()
+    else:
+        async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE integrity_status = ?', (integrity_status,)) as cursor:
+            return await cursor.fetchall()
 
 async def insert_archive(archive_md5: str, path: str, integrity_status: float, create_time_seconds: float, modify_time_seconds: float):
     """

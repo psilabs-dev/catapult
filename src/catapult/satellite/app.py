@@ -30,23 +30,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-@app.post("/api/metadata/nhentai-archivist")
-async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks):
-    """
-    Update all untagged archives in LANraragi with metadata found in the nhentai_archivist
-    database. To be used in conjunction with a cron job.
-    """
-    # check for connectivity
-    client = LRRClient.default_client()
-    shinobu_response = await client.get_shinobu_status()
-    if shinobu_response.status_code != 200:
-        return JSONResponse({
-            "message": f"Error occurred while checking connection: {shinobu_response.error}"
-        }, status_code=shinobu_response.status_code)
-
-    lanraragi = LRRClient.default_client()
-    nhentai_archivist = NhentaiArchivistMetadataClient.default_client()
-
+async def __update_nhentai_archivist_metadata(lanraragi: LRRClient, nhentai_archivist: NhentaiArchivistMetadataClient):
     # get all untagged archives from LRR.
     untagged_archives = (await lanraragi.get_untagged_archives()).data
     logger.info(f"Found {len(untagged_archives)} untagged archives.")
@@ -88,7 +72,51 @@ async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks):
             response[status_code] = [archive_id]
         else:
             response[status_code].append(archive_id)
-    return JSONResponse(response, status_code=200)
+
+@app.post("/api/metadata/nhentai-archivist")
+async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks):
+    """
+    Update all untagged archives in LANraragi with metadata found in the nhentai_archivist
+    database. To be used in conjunction with a cron job.
+    """
+    # check for connectivity
+    lrr_host = config.lrr_host
+    lrr_api_key = config.lrr_api_key
+    if not lrr_host:
+        return JSONResponse({
+            "message": "No LANraragi host configured."
+        }, status_code=400)
+    if not lrr_api_key:
+        return JSONResponse({
+            "message": "No LANraragi API key."
+        }, status_code=401)
+    lanraragi = LRRClient()
+    shinobu_response = await lanraragi.get_shinobu_status()
+    if shinobu_response.status_code != 200:
+        return JSONResponse({
+            "message": f"Error occurred while checking connection: {shinobu_response.error}"
+        }, status_code=shinobu_response.status_code)
+    
+    # check for nhentai archivist
+    nhentai_archivist_db = config.multi_upload_nhentai_archivist_db
+    if not nhentai_archivist_db:
+        return JSONResponse({
+            "message": "No nhentai archivist db configured"
+        }, status_code=400)
+    nhentai_archivist_db = Path(nhentai_archivist_db)
+    if not nhentai_archivist_db.exists():
+        return JSONResponse({
+            "message": f"Nhentai archivist database does not exist: \"{nhentai_archivist_db}\""
+        }, status_code=404)
+    if not nhentai_archivist_db.is_file():
+        return JSONResponse({
+            "message": f"Nhentai archivist database is not file: {nhentai_archivist_db}"
+        }, status_code=400)
+    nhentai_archivist = NhentaiArchivistMetadataClient(nhentai_archivist_db)
+    background_tasks.add_task(__update_nhentai_archivist_metadata, lanraragi, nhentai_archivist)
+    return JSONResponse({
+        "message": "Queued nhentai archivist metadata updates."
+    }, status_code=200)
 
 @app.get("/api/archives/integrity/{integrity_status}")
 async def get_integrity_status(integrity_status: int):
@@ -160,10 +188,11 @@ async def __update_integrity_status(rows):
 @app.post("/api/archives/integrity")
 async def update_integrity_status(background_tasks: BackgroundTasks):
     """
-    Get all PENDING archives in cache and classify their integrity status.
+    Get all PENDING archives in cache and classify their integrity status. 
+    Limit a classification job to 100K archives at a time.
     """
     integrity_status = ArchiveIntegrityStatus.ARCHIVE_PENDING.value
-    rows = await cache.get_archives_by_integrity_status(integrity_status)
+    rows = await cache.get_archives_by_integrity_status(integrity_status, limit=100_000)
     background_tasks.add_task(__update_integrity_status, rows)
     # paths_to_analyze = [cache.get_path(row) for row in rows]
     num_paths_to_analyze = len([cache.get_path(row) for row in rows])
