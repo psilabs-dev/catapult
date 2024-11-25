@@ -39,8 +39,8 @@ async def create_cache_table():
                            md5 VARCHAR(255) PRIMARY KEY,
                            path TEXT,
                            integrity_status INTEGER,
-                           create_time_seconds INTEGER,
-                           modify_time_seconds INTEGER
+                           create_time_seconds REAL,
+                           modify_time_seconds REAL
                            )''')
         await conn.commit()
     return
@@ -59,7 +59,7 @@ async def get_archives_by_integrity_status(integrity_status: int):
     async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE integrity_status = ?', (integrity_status,)) as cursor:
         return await cursor.fetchall()
 
-async def insert_archive(archive_md5: str, path: str, integrity_status: int, create_time_seconds: int, modify_time_seconds: int):
+async def insert_archive(archive_md5: str, path: str, integrity_status: float, create_time_seconds: float, modify_time_seconds: float):
     """
     Creates a hash entry, saying the corresponding Archive upload is cached.
     This action is performed upon completion of an Archive upload.
