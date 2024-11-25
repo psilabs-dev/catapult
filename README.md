@@ -84,7 +84,7 @@ Nhentai Archivist
 
 PixivUtil2
 - `MULTI_UPLOAD_PIXIVUTIL2_DB`: path to the PixivUtil2 sqlite database.
-- `MULTI_UPLOAD_PIXIVUTIL_FOLDERS`: list of folders of Archives/artworks (joined by ";") that `catapult` should upload from with metadata from corresponding database.
+- `MULTI_UPLOAD_PIXIVUTIL2_FOLDERS`: list of folders of Archives/artworks (joined by ";") that `catapult` should upload from with metadata from corresponding database.
 
 ## Client Library
 Example of uploading an Archive using `LRRClient`:
