@@ -12,6 +12,7 @@ class ArchiveIntegrityStatus(Enum):
     ARCHIVE_OK = 0
     ARCHIVE_CORRUPTED = 1 # archive is corrupted
     ARCHIVE_PENDING = 2 # archive status unknown
+    ARCHIVE_DO_NOT_SCAN = 3 # do not scan these archives
 
 def get_md5(row: aiosqlite.Row):
     return row[0]
