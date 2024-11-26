@@ -38,6 +38,7 @@ services:
     environment:
       - LRR_CONTENTS=/home/koyomi/lanraragi/content
       - CATAPULT_HOME=/workdir/catapult
+      - SATELLITE_API_KEY=satellite
     volumes:
       - ../volumes/satellite:/workdir/catapult
       - lrr_contents:/home/koyomi/lanraragi/content:rw

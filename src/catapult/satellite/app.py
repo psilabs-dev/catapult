@@ -8,8 +8,9 @@ from time import perf_counter
 from typing import Dict
 import aiohttp
 import aiohttp.client_exceptions
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, Depends, FastAPI, status
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 
 from aiolrr.client import LRRClient
 from catapult import cache
@@ -26,9 +27,18 @@ async def lifespan(_: FastAPI):
     await cache.create_cache_table()
     yield
 
+header_scheme = APIKeyHeader(name="Authorization")
+server_api_key = f"Bearer {config.satellite_api_key}" if config.satellite_api_key else None
+
 app = FastAPI(
     lifespan=lifespan
 )
+
+def __check_api_key(key: str) -> bool:
+    """
+    Check if API key is valid.
+    """
+    return key == server_api_key
 
 async def __update_nhentai_archivist_metadata(lanraragi: LRRClient, nhentai_archivist: NhentaiArchivistMetadataClient):
     # get all untagged archives from LRR.
@@ -77,57 +87,66 @@ async def __update_nhentai_archivist_metadata(lanraragi: LRRClient, nhentai_arch
     logger.info(f"[update_nhentai_archivist_metadata] Completed metadata update: time {duration}s; result: {str(arc_count_by_status_code)}")
 
 @app.post("/api/metadata/nhentai-archivist")
-async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks):
+async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks, key: str=Depends(header_scheme)):
     """
     Update all untagged archives in LANraragi with metadata found in the nhentai_archivist
     database. To be used in conjunction with a cron job.
     """
+    if not __check_api_key(key):
+        return JSONResponse({
+            "message": "Missing or invalid API key."
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
+
     # check for connectivity
     lrr_host = config.lrr_host
     lrr_api_key = config.lrr_api_key
     if not lrr_host:
         return JSONResponse({
             "message": "No LANraragi host configured."
-        }, status_code=400)
+        }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if not lrr_api_key:
         return JSONResponse({
             "message": "No LANraragi API key."
-        }, status_code=401)
+        }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     lanraragi = LRRClient()
     shinobu_response = await lanraragi.get_shinobu_status()
     if shinobu_response.status_code != 200:
         return JSONResponse({
             "message": f"Error occurred while checking connection: {shinobu_response.error}"
-        }, status_code=shinobu_response.status_code)
+        }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     # check for nhentai archivist
     nhentai_archivist_db = config.multi_upload_nhentai_archivist_db
     if not nhentai_archivist_db:
         return JSONResponse({
             "message": "No nhentai archivist db configured"
-        }, status_code=400)
+        }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     nhentai_archivist_db = Path(nhentai_archivist_db)
     if not nhentai_archivist_db.exists():
         return JSONResponse({
             "message": f"Nhentai archivist database does not exist: \"{nhentai_archivist_db}\""
-        }, status_code=404)
+        }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if not nhentai_archivist_db.is_file():
         return JSONResponse({
             "message": f"Nhentai archivist database is not file: {nhentai_archivist_db}"
-        }, status_code=400)
+        }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     nhentai_archivist = NhentaiArchivistMetadataClient(nhentai_archivist_db)
     background_tasks.add_task(__update_nhentai_archivist_metadata, lanraragi, nhentai_archivist)
     return JSONResponse({
         "message": "Queued nhentai archivist metadata updates."
-    }, status_code=200)
+    })
 
 @app.get("/api/archives/integrity/{integrity_status}")
-async def get_integrity_by_status(integrity_status: int):
+async def get_integrity_by_status(integrity_status: int, key: str=Depends(header_scheme)):
     """
     Get archives from database based on integrity ID.
     """
+    if not __check_api_key(key):
+        return JSONResponse({
+            "message": "Missing or invalid API key."
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
     results = [cache.get_path(result) for result in (await cache.get_archives_by_integrity_status(integrity_status))]
-    return JSONResponse(results, status_code=200)
+    return JSONResponse(results)
 
 async def __scan_archives_directory(contents_dir):
     start_time = perf_counter()
@@ -149,20 +168,24 @@ async def __scan_archives_directory(contents_dir):
     logger.info(f"[scan_archives_directory] Scanned {len(archive_paths)} archives. Time: {duration}s")
 
 @app.post("/api/archives/scan")
-async def scan_archives_directory(background_tasks: BackgroundTasks):
+async def scan_archives_directory(background_tasks: BackgroundTasks, key: str=Depends(header_scheme)):
     """
     Scan and add all archives from the LRR contents directory to the cache.
     """
+    if not __check_api_key(key):
+        return JSONResponse({
+            "message": "Missing or invalid API key."
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
     contents_dir = config.lrr_contents_dir
     if not contents_dir:
-        return JSONResponse({"message": "LRR contents dir not configured"}, status_code=404)
+        return JSONResponse({"message": "LRR contents dir not configured"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     contents_dir = Path(contents_dir)
     if not contents_dir.exists():
-        return JSONResponse({"message": f"Contents dir does not exist: {contents_dir}"}, status_code=404)
+        return JSONResponse({"message": f"Contents dir does not exist: {contents_dir}"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if not contents_dir.is_dir():
-        return JSONResponse({"message": f"Contents dir must be directory: {contents_dir}"}, status_code=400)
+        return JSONResponse({"message": f"Contents dir must be directory: {contents_dir}"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     background_tasks.add_task(__scan_archives_directory, contents_dir)
-    return JSONResponse({"message": "Queued file scan of directory."}, status_code=200)
+    return JSONResponse({"message": "Queued file scan of directory."})
 
 async def __update_integrity_status(rows):
     # run check
@@ -192,17 +215,21 @@ async def __update_integrity_status(rows):
     logger.info(f"[update_integrity_status] Classified {len(completed)} archives. Time: {duration}s")
 
 @app.post("/api/archives/integrity")
-async def update_integrity_status(background_tasks: BackgroundTasks):
+async def update_integrity_status(background_tasks: BackgroundTasks, key: str=Depends(header_scheme)):
     """
     Get all PENDING archives in cache and classify their integrity status. 
     Limit a classification job to 100K archives at a time.
     """
+    if not __check_api_key(key):
+        return JSONResponse({
+            "message": "Missing or invalid API key."
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
     integrity_status = ArchiveIntegrityStatus.ARCHIVE_PENDING.value
     rows = await cache.get_archives_by_integrity_status(integrity_status, limit=100_000)
     background_tasks.add_task(__update_integrity_status, rows)
     # paths_to_analyze = [cache.get_path(row) for row in rows]
     num_paths_to_analyze = len([cache.get_path(row) for row in rows])
-    return JSONResponse({"message": f"Queued integrity scan of {num_paths_to_analyze} archives."}, status_code=200)
+    return JSONResponse({"message": f"Queued integrity scan of {num_paths_to_analyze} archives."})
 
 async def __delete_corrupted_archives(rows):
     logger.debug("[delete_corrupted_archives] Deleting corrupted archives...")
@@ -222,16 +249,20 @@ async def __delete_corrupted_archives(rows):
     logger.info(f"[delete_corrupted_archives] Deleted {num_deleted} archives. Time: {duration}s.")
 
 @app.delete("/api/archives/corrupted")
-async def delete_corrupted_archives(background_tasks: BackgroundTasks):
+async def delete_corrupted_archives(background_tasks: BackgroundTasks, key: str=Depends(header_scheme)):
     """
     Run a background task that removes all CORRUPTED archives.
 
     WARNING: this is a DESTRUCTIVE action!
     """
+    if not __check_api_key(key):
+        return JSONResponse({
+            "message": "Missing or invalid API key."
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
     logger.info("[delete_corrupted_archives] Removing corrupted archives...")
     integrity_status = ArchiveIntegrityStatus.ARCHIVE_CORRUPTED.value
     rows = await cache.get_archives_by_integrity_status(integrity_status)
     paths_to_delete = [cache.get_path(row) for row in rows]
     num_paths_to_delete = len(paths_to_delete)
     background_tasks.add_task(__delete_corrupted_archives, rows)
-    return JSONResponse({"message": f"Deleted {num_paths_to_delete} archives."}, status_code=200)
+    return JSONResponse({"message": f"Deleted {num_paths_to_delete} archives."})
