@@ -108,7 +108,7 @@ async def update_nhentai_archivist_metadata(background_tasks: BackgroundTasks, k
         return JSONResponse({
             "message": "No LANraragi API key."
         }, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    lanraragi = LRRClient()
+    lanraragi = LRRClient(lrr_host=config.lrr_host, lrr_api_key=config.lrr_api_key)
     shinobu_response = await lanraragi.get_shinobu_status()
     if shinobu_response.status_code != 200:
         return JSONResponse({
