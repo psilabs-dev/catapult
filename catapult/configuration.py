@@ -29,6 +29,10 @@ class Configuration:
     pixivutil2_db: str = None
     pixivutil2_folders: str = None
 
+    # satellite config
+    lrr_contents_dir: str = None
+    satellite_api_key: str = None
+
     def __init__(self):
         """
         Initialize configuration singleton.
@@ -60,6 +64,9 @@ class Configuration:
 
         self.pixivutil2_db = os.getenv('PIXIVUTIL2_DB', self.pixivutil2_db)
         self.pixivutil2_folders = os.getenv('PIXIVUTIL2_FOLDER', self.pixivutil2_folders)
+
+        self.lrr_contents_dir = os.getenv('LRR_CONTENTS_DIR', self.lrr_contents_dir)
+        self.satellite_api_key = os.getenv('SATELLITE_API_KEY', self.satellite_api_key)
 
     def save(self):
         """
