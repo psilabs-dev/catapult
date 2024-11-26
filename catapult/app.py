@@ -1,3 +1,5 @@
+from asyncio import Semaphore
+import asyncio
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
@@ -11,6 +13,8 @@ from aiolrr.client import LRRClient
 from catapult import cache, controller
 from catapult.configuration import config
 from catapult.metadata import PixivUtil2MetadataClient
+from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveValidateUploadStatus
+from catapult.utils.archive import find_all_leaf_folders
 
 logger = logging.getLogger('uvicorn.info')
 
@@ -33,11 +37,36 @@ def __check_api_key(key: str) -> bool:
     return key == server_api_key
 
 async def __upload_pixivutil2_archives(folders: List[Path], metadata_client: PixivUtil2MetadataClient):
-    # TODO: this should have a more dedicated logic.
     start_time = perf_counter()
-    await controller.upload_archives_from_folders(
-        folders, config.lrr_host, lrr_api_key=config.lrr_api_key, metadata_client=metadata_client
-    )
+    # gather all archive paths to upload.
+    archive_paths = []
+    for folder in folders:
+        archives_from_folder = find_all_leaf_folders(folder)
+        archive_paths += archives_from_folder
+
+    # now upload each archive path individually.
+    semaphore = Semaphore(value=8)
+    async def __upload_archive_with_metadata_client(archive_path: Path):
+        async with semaphore:
+            archive_id = metadata_client.get_id_from_path(archive_path)
+            if not archive_id:
+                metadata = ArchiveMetadata()
+            else:
+                # do not upload if metadata is not present (might change)
+                metadata = await metadata_client.get_metadata_from_id(archive_id)
+            upload_request = ArchiveUploadRequest(archive_path, archive_path.name, metadata)
+            response = await controller.async_upload_archive_to_server(
+                archive_path, metadata, config.lrr_host, archive_file_name=upload_request.archive_file_name, lrr_api_key=config.lrr_api_key,
+            )
+            if response.status_code == ArchiveValidateUploadStatus.SUCCESS:
+                logger.info(   f"[upload_pixivutil2_archives] OK        {archive_path.name}")
+            elif response.status_code == ArchiveValidateUploadStatus.IS_DUPLICATE:
+                logger.info(   f"[upload_pixivutil2_archives] DUPLICATE {archive_path.name}")
+            else:
+                logger.warning(f"[upload_pixivutil2_archives] NOT OK    {archive_path}")
+
+    tasks = [asyncio.create_task(__upload_archive_with_metadata_client(archive_path)) for archive_path in archive_paths]
+    await asyncio.gather(*tasks)
     duration = perf_counter() - start_time
     logger.info(f"[upload_pixivutil2_archives] finished upload. Time: {duration}s")
 
