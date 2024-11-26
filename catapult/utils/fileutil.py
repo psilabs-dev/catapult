@@ -2,9 +2,6 @@ from pathlib import Path
 from typing import Union
 import zipfile
 
-from aiolrr.constants import IMAGE_SIGNATURES
-from aiolrr.utils import get_signature_hex, is_valid_signature_hex
-
 # convenience compression algorithms.
 def flat_folder_to_zip(src_folder: Union[str, Path], trg_zip: Union[str, Path]):
     """
