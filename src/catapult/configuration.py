@@ -22,16 +22,12 @@ class Configuration:
     multi_upload_folder_dir: str = None
 
     # nhentai archivist-specific config
-    multi_upload_nhentai_archivist_db: str = None
-    multi_upload_nhentai_archivist_folders: str = None
+    nhentai_archivist_db: str = None
+    nhentai_archivist_folders: str = None
 
     # pixivutil2-specific config
-    multi_upload_pixivutil2_db: str = None
-    multi_upload_pixivutil2_folders: str = None
-
-    # satellite config
-    lrr_contents_dir: str = None
-    satellite_api_key: str = None
+    pixivutil2_db: str = None
+    pixivutil2_folders: str = None
 
     def __init__(self):
         """
@@ -57,16 +53,13 @@ class Configuration:
         self.lrr_host = os.getenv('LRR_HOST', self.lrr_host)
         self.lrr_api_key = os.getenv('LRR_API_KEY', self.lrr_api_key)
 
-        self.multi_upload_folder_dir = os.getenv('MULTI_UPLOAD_FOLDERS', self.multi_upload_folder_dir)
+        self.multi_upload_folder_dir = os.getenv('MULTI_UPLOAD_FOLDER', self.multi_upload_folder_dir)
 
-        self.multi_upload_nhentai_archivist_db = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_DB', self.multi_upload_nhentai_archivist_db)
-        self.multi_upload_nhentai_archivist_folders = os.getenv('MULTI_UPLOAD_NH_ARCHIVIST_FOLDERS', self.multi_upload_nhentai_archivist_folders)
+        self.nhentai_archivist_db = os.getenv('NHENTAI_ARCHIVIST_DB', self.nhentai_archivist_db)
+        self.nhentai_archivist_folders = os.getenv('NHENTAI_ARCHIVIST_FOLDER', self.nhentai_archivist_folders)
 
-        self.multi_upload_pixivutil2_db = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_DB', self.multi_upload_pixivutil2_db)
-        self.multi_upload_pixivutil2_folders = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_FOLDERS', self.multi_upload_pixivutil2_folders)
-
-        self.lrr_contents_dir = os.getenv('LRR_CONTENTS', self.lrr_contents_dir)
-        self.satellite_api_key = os.getenv('SATELLITE_API_KEY', self.satellite_api_key)
+        self.pixivutil2_db = os.getenv('PIXIVUTIL2_DB', self.pixivutil2_db)
+        self.pixivutil2_folders = os.getenv('PIXIVUTIL2_FOLDER', self.pixivutil2_folders)
 
     def save(self):
         """

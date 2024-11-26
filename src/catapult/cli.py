@@ -105,13 +105,17 @@ def __multi_upload(args):
         db = args.db
         folders = args.folders
         if not db:
-            db = config.multi_upload_nhentai_archivist_db
+            db = config.nhentai_archivist_db
+            if not db:
+                raise TypeError("Nhentai Archivist database config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_DB)")
         if not folders:
-            folders = config.multi_upload_nhentai_archivist_folders
-        if not db:
-            raise TypeError("Nhentai Archivist database config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_DB)")
-        if not folders:
-            raise TypeError("Nhentai Archivist folder config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS)")
+            folders = config.nhentai_archivist_folders
+            if not folders:
+                raise TypeError("Nhentai Archivist folder config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS)")
+
+        db = Path(db)
+        if not db.exists():
+            raise FileNotFoundError(f"Nhentai Archivist database not found: {db}")
         folders = [Path(directory) for directory in folders.split(";")]
         for folder in folders:
             if not folder.exists():

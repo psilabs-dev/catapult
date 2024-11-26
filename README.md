@@ -76,32 +76,15 @@ Application-specific environment variables:
 - `LRR_API_KEY`: API key for the LANraragi server.
 
 Multi-upload from folder:
-- `MULTI_UPLOAD_FOLDERS`: list of folders of Archives (joined by ";") that `catapult` should upload from.
+- `MULTI_UPLOAD_FOLDER`: list of folders of Archives (joined by ";") that `catapult` should upload from.
 
 Nhentai Archivist
-- `MULTI_UPLOAD_NH_ARCHIVIST_DB`: path to the `nhentai_archivist` sqlite database.
-- `MULTI_UPLOAD_NH_ARCHIVIST_FOLDERS`: list of folders of Archives (joined by ";") that `catapult` should upload from with metadata from corresponding database.
+- `NHENTAI_ARCHIVIST_DB`: path to the `nhentai_archivist` sqlite database.
+- `NHENTAI_ARCHIVIST_FOLDER`: list of folders of Archives (joined by ";") that `catapult` should upload from with metadata from corresponding database.
 
 PixivUtil2
-- `MULTI_UPLOAD_PIXIVUTIL2_DB`: path to the PixivUtil2 sqlite database.
-- `MULTI_UPLOAD_PIXIVUTIL2_FOLDERS`: list of folders of Archives/artworks (joined by ";") that `catapult` should upload from with metadata from corresponding database.
-
-## Satellite Server
-`satellite` is an HTTP server that attaches to the contents of LANraragi and performs two auxiliary tasks:
-
-1. Identifying (and removing) corrupted archives;
-1. Updating downloader-specific metadata using `catapult`.
-
-Start a `satellite` with uvicorn:
-```sh
-pip install .[satellite]
-uvicorn catapult.satellite:app --host 0.0.0.0 --port 8000
-```
-
-**Updating nhentai_archivist metadata**: Make a POST request to update nhentai_archivist metadata:
-```sh
-curl -X POST http://localhost:8000/api/metadata/nhentai-archivist
-```
+- `PIXIVUTIL2_DB`: path to the PixivUtil2 sqlite database.
+- `PIXIVUTIL2_FOLDER`: list of folders of Archives/artworks (joined by ";") that `catapult` should upload from with metadata from corresponding database.
 
 ## Development
 

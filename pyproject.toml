@@ -22,10 +22,6 @@ dev = [
     "tox>=4.23.0",
     "ruff"
 ]
-satellite = [
-    "fastapi[standard]==0.110.0",
-    "uvicorn[standard]==0.29.0"
-]
 
 [project.scripts]
 catapult = "catapult.cli:main"

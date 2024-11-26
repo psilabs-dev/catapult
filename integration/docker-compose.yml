@@ -28,17 +28,3 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-
-  satellite:
-    build: ../
-    container_name: satellite
-    user: ${MY_UID}:${MY_GID}
-    ports:
-      - 127.0.0.1:8080:8080
-    environment:
-      - LRR_CONTENTS=/home/koyomi/lanraragi/content
-      - CATAPULT_HOME=/workdir/catapult
-      - SATELLITE_API_KEY=satellite
-    volumes:
-      - ../volumes/satellite:/workdir/catapult
-      - lrr_contents:/home/koyomi/lanraragi/content:rw

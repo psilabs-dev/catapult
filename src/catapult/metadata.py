@@ -34,7 +34,7 @@ class NhentaiArchivistMetadataClient(MetadataClient):
     @classmethod
     def default_client(cls) -> MetadataClient:
         from catapult.configuration import config
-        return NhentaiArchivistMetadataClient(config.multi_upload_nhentai_archivist_db)
+        return NhentaiArchivistMetadataClient(config.nhentai_archivist_db)
 
     def get_id_from_path(self, file_path: str | Path) -> str:
         if isinstance(file_path, str):
@@ -129,7 +129,7 @@ class PixivUtil2MetadataClient(MetadataClient):
     @classmethod
     def default_client(cls) -> MetadataClient:
         from catapult.configuration import config
-        return PixivUtil2MetadataClient(config.multi_upload_pixivutil2_db)
+        return PixivUtil2MetadataClient(config.pixivutil2_db)
 
     async def get_id_from_path(self, file_path: str | Path) -> str:
         raise NotImplementedError("PixivUtil2 id fetcher is not implemented!")

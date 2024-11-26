@@ -15,7 +15,7 @@ from catapult.cache import ArchiveIntegrityStatus, get_archive, insert_archive
 from catapult.metadata import MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
-from catapult.utils.archive import find_all_archives, find_all_leaf_folders
+from catapult.utils.archive import find_all_archives
 
 logger = logging.getLogger(__name__)
 
@@ -383,7 +383,7 @@ async def upload_archives_from_folders(
     for folder in folders:
         archives_from_folder = find_all_archives(folder)
         archive_paths += archives_from_folder
-    
+
     # now upload each archive path individually.
     batch_response = MultiArchiveUploadResponse()
     semaphore = asyncio.Semaphore(value=8)
