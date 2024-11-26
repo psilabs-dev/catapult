@@ -1,5 +1,6 @@
 import abc
 from pathlib import Path
+import re
 from typing import List, Union
 import aiosqlite
 
@@ -131,8 +132,16 @@ class PixivUtil2MetadataClient(MetadataClient):
         from catapult.configuration import config
         return PixivUtil2MetadataClient(config.pixivutil2_db)
 
-    async def get_id_from_path(self, file_path: str | Path) -> str:
-        raise NotImplementedError("PixivUtil2 id fetcher is not implemented!")
+    def get_id_from_path(self, file_path: str | Path) -> str:
+        """
+        Get ID from Pixiv folder with name "{pixiv_id} title"
+        """
+        match = re.search(r'\{(.*?)\}', file_path.name)
+        if match:
+            pixiv_id = match.group(1)
+            return pixiv_id
+        else:
+            return None
 
     async def get_metadata_from_id(self, pixiv_id: int) -> ArchiveMetadata:
         """
@@ -167,7 +176,13 @@ class PixivUtil2MetadataClient(MetadataClient):
                         all_tags.append(translated_tag_id)
 
             # get summary
-            summary = await (await cursor.execute('SELECT caption from pixiv_master_image WHERE image_id = ?', (pixiv_id,))).fetchall()
+            summaries = await (await cursor.execute('SELECT caption from pixiv_master_image WHERE image_id = ?', (pixiv_id,))).fetchone()
+            summary = None
+            if summaries:
+                _summary = summaries[0]
+                if not isinstance(_summary, str):
+                    raise TypeError(_summary)
+                summary = _summary
 
             # assemble tags
             tag_list = all_tags # start with all tags.

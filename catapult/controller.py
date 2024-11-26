@@ -1,3 +1,4 @@
+import tempfile
 import aiohttp
 import aiohttp.client_exceptions
 import asyncio
@@ -12,10 +13,11 @@ from aiolrr.utils import compute_sha1, compute_archive_id, get_signature_hex, is
 
 from catapult import cache
 from catapult.cache import ArchiveIntegrityStatus, get_archive, insert_archive
-from catapult.metadata import MetadataClient
+from catapult.metadata import MetadataClient, PixivUtil2MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
-from catapult.utils.archive import find_all_archives
+from catapult.utils.archive import find_all_archives, find_all_leaf_folders
+from catapult.utils.fileutil import flat_folder_to_zip
 
 logger = logging.getLogger(__name__)
 
@@ -381,8 +383,12 @@ async def upload_archives_from_folders(
     # gather all archive paths to upload.
     archive_paths = []
     for folder in folders:
-        archives_from_folder = find_all_archives(folder)
-        archive_paths += archives_from_folder
+        if isinstance(metadata_client, PixivUtil2MetadataClient):
+            archives_from_folder = find_all_leaf_folders(folder)
+            archive_paths += archives_from_folder
+        else:
+            archives_from_folder = find_all_archives(folder)
+            archive_paths += archives_from_folder
 
     # now upload each archive path individually.
     batch_response = MultiArchiveUploadResponse()
@@ -391,11 +397,25 @@ async def upload_archives_from_folders(
         async with semaphore:
             if metadata_client:
                 archive_id = metadata_client.get_id_from_path(archive_path)
-                metadata = await metadata_client.get_metadata_from_id(archive_id)
+                if not archive_id:
+                    metadata = ArchiveMetadata()
+                else:
+                    # do not upload if metadata is not present (might change)
+                    metadata = await metadata_client.get_metadata_from_id(archive_id)
             else:
                 metadata = ArchiveMetadata()
-            upload_request = ArchiveUploadRequest(archive_path, archive_path.name, metadata)
-            return await async_upload_archive_to_server(archive_path, metadata, lrr_host, archive_file_name=upload_request.archive_file_name, lrr_api_key=lrr_api_key)
+            
+            if isinstance(metadata_client, PixivUtil2MetadataClient):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    zipped_archive_name = archive_path.name + ".zip"
+                    zipped_archive_path = tmpdir / Path(zipped_archive_name)
+                    flat_folder_to_zip(archive_path, zipped_archive_path)
+                    upload_request = ArchiveUploadRequest(zipped_archive_path, zipped_archive_name, metadata)
+                    return await async_upload_archive_to_server(zipped_archive_path, metadata, lrr_host, archive_file_name=zipped_archive_name, lrr_api_key=lrr_api_key)
+            else:
+                upload_request = ArchiveUploadRequest(archive_path, archive_path.name, metadata)
+                return await async_upload_archive_to_server(archive_path, metadata, lrr_host, archive_file_name=upload_request.archive_file_name, lrr_api_key=lrr_api_key)
+
     tasks = [asyncio.create_task(__upload_archive_with_metadata_client(archive_path)) for archive_path in archive_paths]
     upload_responses = await asyncio.gather(*tasks)
     

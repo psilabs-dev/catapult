@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from time import perf_counter
 
-from catapult.metadata import NhentaiArchivistMetadataClient
+from catapult.metadata import NhentaiArchivistMetadataClient, PixivUtil2MetadataClient
 
 from .cache import create_cache_table, drop_cache_table
 from .configuration import config
@@ -124,8 +124,29 @@ def __multi_upload(args):
         response = asyncio.run(upload_archives_from_folders(
             folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache, metadata_client=nhentai_archivist_client
         ))
-    elif plugin_command == 'from-pixiv':
-        raise NotImplementedError("Pixiv upload with metadata injection not implemented!")
+    elif plugin_command == 'from-pixivutil2':
+        db = args.db
+        folders = args.folders
+        if not db:
+            db = config.pixivutil2_db
+            if not db:
+                raise TypeError("PixivUtil2 database config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_DB)")
+        if not folders:
+            folders = config.pixivutil2_folders
+            if not folders:
+                raise TypeError("PixivUtil2 download folder config cannot be empty (MULTI_UPLOAD_NH_ARCHIVIST_CONTENTS)")
+
+        db = Path(db)
+        if not db.exists():
+            raise FileNotFoundError(f"PixivUtil2 database not found: {db}")
+        folders = [Path(directory) for directory in folders.split(";")]
+        for folder in folders:
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder not found: {folder}")
+        pixivutil2_client = PixivUtil2MetadataClient(db, allowed_translation_types=["en"])
+        response = asyncio.run(upload_archives_from_folders(
+            folders, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache, metadata_client=pixivutil2_client
+        ))
     else:
         raise NotImplementedError(f"Unsupported plugin: {plugin_command}")
 
@@ -185,6 +206,9 @@ def main():
     mu_nh_parser = mu_subparsers.add_parser('from-nhentai-archivist', help="Nhentai archivist upload jobs.")
     mu_nh_parser.add_argument('--db', type=str, help='Path to nhentai archivist database.')
     mu_nh_parser.add_argument('--folders', type=str, help='Path to nhentai archivist contents folder.')
+    mu_nh_parser = mu_subparsers.add_parser('from-pixivutil2', help="PixivUtil2 upload jobs.")
+    mu_nh_parser.add_argument('--db', type=str, help='Path to PixivUtil2 database.')
+    mu_nh_parser.add_argument('--folders', type=str, help='Path to PixivUtil2 contents folder.')
 
     for plugin_parser in [mu_folder_parser, mu_nh_parser]:
         plugin_parser.add_argument('--lrr-host', type=str, help='URL of the server.')
