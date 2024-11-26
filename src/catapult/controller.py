@@ -15,7 +15,7 @@ from catapult.cache import ArchiveIntegrityStatus, get_archive, insert_archive
 from catapult.metadata import MetadataClient
 from catapult.models import ArchiveMetadata, ArchiveUploadRequest, ArchiveUploadResponse, ArchiveValidateResponse, ArchiveValidateUploadStatus, MultiArchiveUploadResponse
 from catapult.utils import archive_contains_corrupted_image
-from catapult.utils.archive import find_all_archives
+from catapult.utils.archive import find_all_archives, find_all_leaf_folders
 
 logger = logging.getLogger(__name__)
 
@@ -377,18 +377,27 @@ async def upload_archives_from_folders(
     metadata_client : MetadataClient, optional
         Client/interface for a metadata/content downloader.
     """
-    upload_requests = []
+
+    # gather all archive paths to upload.
+    archive_paths = []
     for folder in folders:
         archives_from_folder = find_all_archives(folder)
-        for archive_path in archives_from_folder:
+        archive_paths += archives_from_folder
+    
+    # now upload each archive path individually.
+    batch_response = MultiArchiveUploadResponse()
+    semaphore = asyncio.Semaphore(value=8)
+    async def __upload_archive_with_metadata_client(archive_path: Path):
+        async with semaphore:
             if metadata_client:
                 archive_id = metadata_client.get_id_from_path(archive_path)
                 metadata = await metadata_client.get_metadata_from_id(archive_id)
             else:
                 metadata = ArchiveMetadata()
             upload_request = ArchiveUploadRequest(archive_path, archive_path.name, metadata)
-            upload_requests.append(upload_request)
-    batch_upload_response = await upload_multiple_archives_to_server(
-        upload_requests, lrr_host, lrr_api_key=lrr_api_key, use_cache=use_cache
-    )
-    return batch_upload_response
+            return await async_upload_archive_to_server(archive_path, metadata, lrr_host, archive_file_name=upload_request.archive_file_name, lrr_api_key=lrr_api_key)
+    tasks = [asyncio.create_task(__upload_archive_with_metadata_client(archive_path)) for archive_path in archive_paths]
+    upload_responses = await asyncio.gather(*tasks)
+    
+    batch_response.upload_responses = upload_responses
+    return batch_response
