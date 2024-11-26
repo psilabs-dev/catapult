@@ -10,7 +10,7 @@ class Configuration:
     Configuration singleton object; holds configurations of the application.
     """
 
-    CATAPULT_HOME = Path.home() / ".catapult"
+    CATAPULT_HOME = Path(os.getenv("CATAPULT_HOME", Path.home() / ".catapult"))
     CATAPULT_CONFIG_FILE = CATAPULT_HOME / "catapult.toml"
     CATAPULT_CACHE_DB = CATAPULT_HOME / "cache.db"
 
@@ -28,6 +28,10 @@ class Configuration:
     # pixivutil2-specific config
     multi_upload_pixivutil2_db: str = None
     multi_upload_pixivutil2_folders: str = None
+
+    # satellite config
+    lrr_contents_dir: str = None
+    satellite_api_key: str = None
 
     def __init__(self):
         """
@@ -60,6 +64,9 @@ class Configuration:
 
         self.multi_upload_pixivutil2_db = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_DB', self.multi_upload_pixivutil2_db)
         self.multi_upload_pixivutil2_folders = os.getenv('MULTI_UPLOAD_PIXIVUTIL2_FOLDERS', self.multi_upload_pixivutil2_folders)
+
+        self.lrr_contents_dir = os.getenv('LRR_CONTENTS', self.lrr_contents_dir)
+        self.satellite_api_key = os.getenv('SATELLITE_API_KEY', self.satellite_api_key)
 
     def save(self):
         """

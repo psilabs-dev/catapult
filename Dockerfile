@@ -1,16 +1,10 @@
-FROM debian:bookworm
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PATH="/opt/venv/bin:$PATH"
-
-RUN apt-get update && apt-get install -y python3 python3-venv
+FROM python:3.11
 
 WORKDIR /workdir
 
-COPY requirements.txt       /workdir/requirements.txt
-RUN python3 -m venv /opt/venv && pip3 install -r requirements.txt
-
+COPY requirements.txt /workdir/requirements.txt
 COPY src                    /workdir/src
 COPY pyproject.toml         /workdir/pyproject.toml
 
-RUN pip3 install --no-cache .
+RUN pip3 install --no-cache .[satellite]
+CMD [ "uvicorn", "catapult.satellite:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info" ]

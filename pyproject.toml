@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "catapult"
-version = "0.4.0"
+version = "0.5.0"
 authors = [
     {name="psilabs-dev"}
 ]
@@ -22,6 +22,10 @@ dev = [
     "tox>=4.23.0",
     "ruff"
 ]
+satellite = [
+    "fastapi[standard]==0.110.0",
+    "uvicorn[standard]==0.29.0"
+]
 
 [project.scripts]
 catapult = "catapult.cli:main"
@@ -30,7 +34,7 @@ catapult = "catapult.cli:main"
 Homepage = "https://github.com/psilabs-dev/catapult"
 
 [tool.ruff]
-extend-select = ["ASYNC", "C4", "SIM", "TCH"]
+extend-select = ["ASYNC", "C4", "SIM"]
 show-fixes = true
 ignore = ["ASYNC230"] # use normal blocking open, aiofiles may be too slow.
 target-version = "py310"

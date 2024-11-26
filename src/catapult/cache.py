@@ -1,3 +1,4 @@
+from enum import Enum
 import aiosqlite
 import asyncio
 import logging
@@ -6,6 +7,28 @@ from catapult.configuration import config
 
 logger = logging.getLogger(__name__)
 
+class ArchiveIntegrityStatus(Enum):
+    
+    ARCHIVE_OK = 0
+    ARCHIVE_CORRUPTED = 1 # archive is corrupted
+    ARCHIVE_PENDING = 2 # archive status unknown
+    ARCHIVE_DO_NOT_SCAN = 3 # do not scan these archives
+
+def get_md5(row: aiosqlite.Row):
+    return row[0]
+
+def get_path(row: aiosqlite.Row):
+    return row[1]
+
+def get_integrity_status(row: aiosqlite.Row):
+    return row[2]
+
+def get_create_time_seconds(row: aiosqlite.Row):
+    return row[3]
+
+def get_modify_time_seconds(row: aiosqlite.Row):
+    return row[4]
+
 async def create_cache_table():
     """
     Create `archive_hash` table which stores the MD5 hashes of the filenames of all 
@@ -13,21 +36,35 @@ async def create_cache_table():
     """
     async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn:
         await conn.execute('''
-        CREATE TABLE IF NOT EXISTS archive_hash (
-        md5 VARCHAR(255) PRIMARY KEY
-        )
-        ''')
+                           CREATE TABLE IF NOT EXISTS archive_hash (
+                           md5 VARCHAR(255) PRIMARY KEY,
+                           path TEXT,
+                           integrity_status INTEGER,
+                           create_time_seconds REAL,
+                           modify_time_seconds REAL
+                           )''')
         await conn.commit()
     return
 
-async def archive_hash_exists(archive_md5: str) -> bool:
+async def get_archive(archive_md5: str):
     """
-    Returns True if hash exists in cache, else False.
+    Get archive stat from archive filename hash.
     """
     async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE md5 = ?', (archive_md5,)) as cursor:
-            return await cursor.fetchone() is not None
+        return await cursor.fetchone()
 
-async def insert_archive_hash(archive_md5: str):
+async def get_archives_by_integrity_status(integrity_status: int, limit: int=None):
+    """
+    Get all archives with given integrity status.
+    """
+    if limit:
+        async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE integrity_status = ? LIMIT ?', (integrity_status, limit)) as cursor:
+            return await cursor.fetchall()
+    else:
+        async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn, conn.execute('SELECT * FROM archive_hash WHERE integrity_status = ?', (integrity_status,)) as cursor:
+            return await cursor.fetchall()
+
+async def insert_archive(archive_md5: str, path: str, integrity_status: float, create_time_seconds: float, modify_time_seconds: float):
     """
     Creates a hash entry, saying the corresponding Archive upload is cached.
     This action is performed upon completion of an Archive upload.
@@ -37,12 +74,39 @@ async def insert_archive_hash(archive_md5: str):
     while True:
         try:
             async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn:
-                await conn.execute('INSERT OR IGNORE INTO archive_hash VALUES (?)', (archive_md5,))
+                await conn.execute('''
+                                   INSERT OR IGNORE INTO archive_hash
+                                   (md5, path, integrity_status, create_time_seconds, modify_time_seconds)
+                                   VALUES (?, ?, ?, ?, ?)
+                                   ON CONFLICT(md5) DO UPDATE SET
+                                   path = excluded.path,
+                                   integrity_status = excluded.integrity_status,
+                                   create_time_seconds = excluded.create_time_seconds,
+                                   modify_time_seconds = excluded.modify_time_seconds
+''', (archive_md5, path, integrity_status, create_time_seconds, modify_time_seconds))
                 await conn.commit()
                 return
         except aiosqlite.core.sqlite3.OperationalError:
+            # this may happen if database is locked; in this case, wait and try again.
             time_to_sleep = 2 ** (retry_count + 1)
-            asyncio.sleep(time_to_sleep)
+            await asyncio.sleep(time_to_sleep)
+            continue
+
+async def delete_archive(archive_md5: str):
+    """
+    Delete archive record in database.
+    """
+    retry_count = 0
+    while True:
+        try:
+            async with aiosqlite.connect(config.CATAPULT_CACHE_DB) as conn:
+                await conn.execute('DELETE FROM archive_hash WHERE md5 = ?', (archive_md5,))
+                await conn.commit()
+                return
+        except aiosqlite.core.sqlite3.OperationalError:
+            # this may happen if database is locked; in this case, wait and try again.
+            time_to_sleep = 2 ** (retry_count + 1)
+            await asyncio.sleep(time_to_sleep)
             continue
 
 async def drop_cache_table():
@@ -50,5 +114,3 @@ async def drop_cache_table():
         await conn.execute('DROP TABLE IF EXISTS archive_hash')
         await conn.commit()
     return
-
-asyncio.run(create_cache_table())

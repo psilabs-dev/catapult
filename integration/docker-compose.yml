@@ -1,3 +1,6 @@
+volumes:
+  lrr_contents:
+
 services:
 
   redis:
@@ -9,8 +12,6 @@ services:
     healthcheck:
       test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
       start_period: 10s
-    profiles:
-      - server
 
   lanraragi:
     image: ghcr.io/psilabs-dev/lanraragi:dev-0.9.30-53dc4d85820e549532d265a7859b3636871b38ca
@@ -20,8 +21,24 @@ services:
       - 3000:3000
     environment:
       - "LRR_REDIS_ADDRESS=redis:6379"
+      - LRR_UID=${MY_UID}
+      - LRR_GID=${MY_GID}
+    volumes:
+      - lrr_contents:/home/koyomi/lanraragi/content:rw
     depends_on:
       redis:
         condition: service_healthy
-    profiles:
-      - server
+
+  satellite:
+    build: ../
+    container_name: satellite
+    user: ${MY_UID}:${MY_GID}
+    ports:
+      - 127.0.0.1:8080:8080
+    environment:
+      - LRR_CONTENTS=/home/koyomi/lanraragi/content
+      - CATAPULT_HOME=/workdir/catapult
+      - SATELLITE_API_KEY=satellite
+    volumes:
+      - ../volumes/satellite:/workdir/catapult
+      - lrr_contents:/home/koyomi/lanraragi/content:rw
