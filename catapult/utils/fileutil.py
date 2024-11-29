@@ -2,13 +2,10 @@ from pathlib import Path
 from typing import Union
 import zipfile
 
-from catapult.lanraragi.constants import IMAGE_SIGNATURES
-from catapult.lanraragi.utils import get_signature_hex, is_valid_signature_hex
-
 # convenience compression algorithms.
 def flat_folder_to_zip(src_folder: Union[str, Path], trg_zip: Union[str, Path]):
     """
-    Compress a flat folder containing only images into a target file using zip.
+    Compress a flat folder into a target file using zip.
     """
     if isinstance(src_folder, str):
         src_folder = Path(src_folder)
@@ -27,11 +24,11 @@ def flat_folder_to_zip(src_folder: Union[str, Path], trg_zip: Union[str, Path]):
     with zipfile.ZipFile(trg_zip, mode='w', compression=zipfile.ZIP_DEFLATED) as zip_obj:
         for path in src_folder.iterdir():
             # check if it is an image.
-            ext = path.suffix
+            # ext = path.suffix
             filename = path.name
-            if not ext:
-                continue
-            signature = get_signature_hex(path)
-            if not is_valid_signature_hex(signature, allowed_signatures=IMAGE_SIGNATURES):
-                continue
+            # if not ext:
+            #     continue
+            # signature = get_signature_hex(path)
+            # if not is_valid_signature_hex(signature, allowed_signatures=IMAGE_SIGNATURES):
+            #     continue
             zip_obj.write(path, filename)
